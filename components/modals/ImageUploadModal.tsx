@@ -4,11 +4,21 @@ import {
     Upload,
     Camera,
     Image as ImageIcon,
-    ChevronDown
+    ChevronDown,
+    Loader2,
+    AlertTriangle,
+    Bug,
+    CheckCircle2,
+    Plus
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { FIELDS } from '@/lib/mock-data';
-import { MOCK_IMAGE_UPLOADS } from '@/types/image-upload';
+import {
+    MOCK_IMAGE_UPLOADS,
+    IdentificationResult,
+    getConfidenceColor,
+    getSeverityLevelColor
+} from '@/types/image-upload';
 
 interface ImageUploadModalProps {
     isOpen: boolean;
@@ -21,6 +31,8 @@ export function ImageUploadModal({ isOpen, onClose, preselectedFieldId }: ImageU
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [fileName, setFileName] = useState<string>('');
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [identificationResult, setIdentificationResult] = useState<IdentificationResult | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleFileSelect = useCallback((file: File) => {
@@ -68,13 +80,29 @@ export function ImageUploadModal({ isOpen, onClose, preselectedFieldId }: ImageU
     const handleSubmit = useCallback(() => {
         if (!previewUrl || !selectedFieldId) return;
 
-        // For now, just close the modal - US-003 will add the results display
+        setIsAnalyzing(true);
+        
+        // Simulate AI analysis with 1.5 second delay
+        setTimeout(() => {
+            // Get a random mock result for demonstration
+            const randomUpload = MOCK_IMAGE_UPLOADS[Math.floor(Math.random() * MOCK_IMAGE_UPLOADS.length)];
+            if (randomUpload.identificationResult) {
+                setIdentificationResult(randomUpload.identificationResult);
+            }
+            setIsAnalyzing(false);
+        }, 1500);
+    }, [previewUrl, selectedFieldId]);
+
+    const handleAddToMonitor = useCallback(() => {
+        // In a real app, this would add to the PestDiseaseMonitor
+        // For now, just show confirmation by closing the modal
         onClose();
-    }, [previewUrl, selectedFieldId, onClose]);
+    }, [onClose]);
 
     const handleClearImage = useCallback(() => {
         setPreviewUrl(null);
         setFileName('');
+        setIdentificationResult(null);
         if (fileInputRef.current) {
             fileInputRef.current.value = '';
         }
@@ -182,6 +210,84 @@ export function ImageUploadModal({ isOpen, onClose, preselectedFieldId }: ImageU
                         </div>
                     )}
 
+                    {/* Loading State */}
+                    {isAnalyzing && (
+                        <div className="flex flex-col items-center gap-4 py-8">
+                            <div className="w-16 h-16 rounded-full bg-blue-500/20 flex items-center justify-center">
+                                <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
+                            </div>
+                            <div className="text-center">
+                                <p className="text-lg font-medium">Analyzing Image...</p>
+                                <p className="text-sm text-muted-foreground">AI is identifying pests and diseases</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Identification Results */}
+                    {identificationResult && !isAnalyzing && (
+                        <div className="space-y-4 border border-white/10 rounded-xl p-4 bg-white/5">
+                            <div className="flex items-start gap-3">
+                                <div className={cn(
+                                    "w-10 h-10 rounded-lg flex items-center justify-center shrink-0",
+                                    identificationResult.type === 'pest' ? "bg-orange-500/20" : "bg-purple-500/20"
+                                )}>
+                                    {identificationResult.type === 'pest' 
+                                        ? <Bug className="w-5 h-5 text-orange-400" />
+                                        : <AlertTriangle className="w-5 h-5 text-purple-400" />
+                                    }
+                                </div>
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <h3 className="font-semibold text-lg">{identificationResult.pestOrDiseaseName}</h3>
+                                        <span className={cn(
+                                            "px-2 py-0.5 rounded-full text-xs font-medium",
+                                            getConfidenceColor(identificationResult.confidence)
+                                        )}>
+                                            {identificationResult.confidence}% confidence
+                                        </span>
+                                    </div>
+                                    <p className="text-sm text-muted-foreground mt-1">{identificationResult.description}</p>
+                                </div>
+                            </div>
+
+                            {/* Severity Assessment */}
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-muted-foreground">Severity:</span>
+                                <span className={cn(
+                                    "px-3 py-1 rounded-full text-sm font-medium",
+                                    getSeverityLevelColor(identificationResult.severity)
+                                )}>
+                                    {identificationResult.severity}
+                                </span>
+                            </div>
+
+                            {/* Recommended Actions */}
+                            <div className="space-y-2">
+                                <h4 className="text-sm font-medium flex items-center gap-2">
+                                    <CheckCircle2 className="w-4 h-4 text-green-400" />
+                                    Recommended Actions
+                                </h4>
+                                <ul className="space-y-1.5">
+                                    {identificationResult.recommendedActions.map((action, index) => (
+                                        <li key={index} className="text-sm text-muted-foreground flex items-start gap-2">
+                                            <span className="text-muted-foreground/50">•</span>
+                                            <span>{action}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+
+                            {/* Add to Monitor Button */}
+                            <button
+                                onClick={handleAddToMonitor}
+                                className="w-full py-2.5 px-4 bg-primary/20 hover:bg-primary/30 text-primary rounded-lg transition-colors flex items-center justify-center gap-2 font-medium"
+                            >
+                                <Plus className="w-4 h-4" />
+                                Add to Monitor
+                            </button>
+                        </div>
+                    )}
+
                     <input
                         ref={fileInputRef}
                         type="file"
@@ -197,21 +303,32 @@ export function ImageUploadModal({ isOpen, onClose, preselectedFieldId }: ImageU
                         onClick={onClose}
                         className="px-6 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
                     >
-                        Cancel
+                        {identificationResult ? 'Close' : 'Cancel'}
                     </button>
-                    <button
-                        onClick={handleSubmit}
-                        disabled={!previewUrl || !selectedFieldId}
-                        className={cn(
-                            "px-6 py-2 rounded-lg transition-colors flex items-center gap-2 font-medium",
-                            previewUrl && selectedFieldId
-                                ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                                : "bg-white/10 text-muted-foreground cursor-not-allowed"
-                        )}
-                    >
-                        <Camera className="w-4 h-4" />
-                        Identify Pest/Disease
-                    </button>
+                    {!identificationResult && (
+                        <button
+                            onClick={handleSubmit}
+                            disabled={!previewUrl || !selectedFieldId || isAnalyzing}
+                            className={cn(
+                                "px-6 py-2 rounded-lg transition-colors flex items-center gap-2 font-medium",
+                                previewUrl && selectedFieldId && !isAnalyzing
+                                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                                    : "bg-white/10 text-muted-foreground cursor-not-allowed"
+                            )}
+                        >
+                            {isAnalyzing ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    Analyzing...
+                                </>
+                            ) : (
+                                <>
+                                    <Camera className="w-4 h-4" />
+                                    Identify Pest/Disease
+                                </>
+                            )}
+                        </button>
+                    )}
                 </div>
             </div>
         </div>
