@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { TrendingUp, TrendingDown, Minus, AlertTriangle } from 'lucide-react';
 import { Widget } from '@/components/dashboard/DashboardGrid';
 import { FIELDS } from '@/lib/mock-data';
@@ -23,8 +24,9 @@ export function FieldHealthCard() {
         <Widget title="Field Health Overview" className="col-span-2">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {FIELDS.map((field) => (
-                    <div
+                    <Link
                         key={field.id}
+                        href={`/fields/${field.id}`}
                         className="group relative overflow-hidden rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition-all cursor-pointer"
                     >
                         {/* NDVI Heatmap Simulation */}
@@ -78,7 +80,7 @@ export function FieldHealthCard() {
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    </Link>
                 ))}
             </div>
 
