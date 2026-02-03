@@ -18,6 +18,7 @@ export function SpectrumSlider() {
     const bands = [
         { id: 'rgb', label: 'RGB', icon: Eye, color: 'bg-blue-500' },
         { id: 'ndvi', label: 'NDVI', icon: Activity, color: 'bg-green-500' },
+        { id: 'ndre', label: 'NDRE', icon: Activity, color: 'bg-emerald-500' },
         { id: 'thermal', label: 'Thermal', icon: Thermometer, color: 'bg-red-500' },
     ] as const;
 
@@ -30,7 +31,7 @@ export function SpectrumSlider() {
 
             <div className="space-y-4">
                 {/* Band Selection */}
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                     {bands.map((band) => {
                         const Icon = band.icon;
                         const isActive = activeBand === band.id;

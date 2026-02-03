@@ -1,7 +1,7 @@
 'use client';
 
 import { AppShell } from '@/components/layout/AppShell';
-import { FIELDS } from '@/lib/mock-data';
+import { useFieldStore } from '@/lib/field-store';
 import { MapPin, Calendar, TrendingUp, TrendingDown, AlertTriangle, Eye, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
@@ -10,6 +10,7 @@ import { AddFieldModal } from '@/components/modals/AddFieldModal';
 import { CropRotationPlannerModal } from '@/components/modals/CropRotationPlannerModal';
 
 export default function FieldsPage() {
+    const { fields, addField } = useFieldStore();
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isRotationPlannerOpen, setIsRotationPlannerOpen] = useState(false);
 
@@ -33,7 +34,7 @@ export default function FieldsPage() {
                     <div>
                         <h1 className="text-3xl font-bold">Fields</h1>
                         <p className="text-muted-foreground mt-1">
-                            Manage and monitor all {FIELDS.length} fields across 450 acres
+                            Manage and monitor all {fields.length} fields across 450 acres
                         </p>
                     </div>
                     <div className="flex gap-2">
@@ -57,29 +58,29 @@ export default function FieldsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div className="glass-panel rounded-xl p-4">
                         <div className="text-sm text-muted-foreground mb-1">Total Area</div>
-                        <div className="text-2xl font-bold">{FIELDS.reduce((sum, f) => sum + f.acres, 0)} acres</div>
+                        <div className="text-2xl font-bold">{fields.reduce((sum, f) => sum + f.acres, 0)} acres</div>
                     </div>
                     <div className="glass-panel rounded-xl p-4">
                         <div className="text-sm text-muted-foreground mb-1">Avg. Health</div>
                         <div className="text-2xl font-bold text-green-400">
-                            {Math.round((FIELDS.reduce((sum, f) => sum + f.ndviScore, 0) / FIELDS.length) * 100)}
+                            {Math.round((fields.reduce((sum, f) => sum + f.ndviScore, 0) / fields.length) * 100)}
                         </div>
                     </div>
                     <div className="glass-panel rounded-xl p-4">
                         <div className="text-sm text-muted-foreground mb-1">Active Crops</div>
-                        <div className="text-2xl font-bold">{new Set(FIELDS.map(f => f.crop)).size}</div>
+                        <div className="text-2xl font-bold">{new Set(fields.map(f => f.crop)).size}</div>
                     </div>
                     <div className="glass-panel rounded-xl p-4">
                         <div className="text-sm text-muted-foreground mb-1">Needs Attention</div>
                         <div className="text-2xl font-bold text-yellow-400">
-                            {FIELDS.filter(f => f.healthStatus === 'attention' || f.healthStatus === 'critical').length}
+                            {fields.filter(f => f.healthStatus === 'attention' || f.healthStatus === 'critical').length}
                         </div>
                     </div>
                 </div>
 
                 {/* Fields Grid */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {FIELDS.map((field) => (
+                    {fields.map((field) => (
                         <Link
                             key={field.id}
                             href={`/fields/${field.id}`}
@@ -159,7 +160,8 @@ export default function FieldsPage() {
                 isOpen={isAddModalOpen}
                 onClose={() => setIsAddModalOpen(false)}
                 onSubmit={(field) => {
-                    console.log('Field added:', field);
+                    addField(field);
+                    setIsAddModalOpen(false);
                 }}
             />
 

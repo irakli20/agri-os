@@ -1,7 +1,7 @@
 'use client';
 
 import { AppShell } from '@/components/layout/AppShell';
-import { FIELDS } from '@/lib/mock-data';
+import { useFieldStore } from '@/lib/field-store';
 import {
     MULTISPECTRAL_LAYERS,
     SOIL_SAMPLES,
@@ -11,9 +11,9 @@ import {
 import {
     ArrowLeft, Layers, MapPin, Droplets, Thermometer,
     Leaf, AlertTriangle, Download, Share2, Calendar,
-    Zap, Target, GitCompare, Bug, Calculator, User, CheckCircle
+    Zap, Target, GitCompare, Bug, Calculator, User, CheckCircle, Edit3, X
 } from 'lucide-react';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { ComparisonSlider } from '@/components/ui/ComparisonSlider';
@@ -22,10 +22,19 @@ import { PestDiseaseMonitorModal } from '@/components/modals/PestDiseaseMonitorM
 import { ScoutingScheduleModal } from '@/components/modals/ScoutingScheduleModal';
 import { ScoutingReportModal } from '@/components/modals/ScoutingReportModal';
 import { PlantCountModal } from '@/components/modals/PlantCountModal';
+// Removed EditFieldModal import
 
 import { ScoutingStorage, type ScoutingMission } from '@/lib/scouting-data';
 import Image from 'next/image';
 import { getFieldOverlay } from '@/lib/field-overlay-generator';
+import mapboxgl from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
+import * as turf from '@turf/turf';
+import { areaToAcres } from '@/lib/geo-utils';
+
+const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '';
+const IS_PLACEHOLDER_TOKEN = !MAPBOX_TOKEN || MAPBOX_TOKEN === 'your_mapbox_token_here';
+mapboxgl.accessToken = MAPBOX_TOKEN;
 
 const LAYER_IMAGES: Record<string, string> = {
     'ndvi': '/ndvi-field.png',
@@ -43,10 +52,39 @@ const PROBLEM_OVERLAYS = [
 ];
 
 export default function FieldDetailPage({ params }: { params: { id: string } }) {
-    const field = FIELDS.find(f => f.id === params.id);
-    const analysis = FIELD_ANALYSES.find(a => a.fieldId === params.id);
-    const soilSamples = SOIL_SAMPLES.filter(s => s.fieldId === params.id);
-    const zones = MANAGEMENT_ZONES.filter(z => z.fieldId === params.id);
+    const { fields, updateField } = useFieldStore();
+    const field = fields.find(f => f.id === params.id);
+    const analysis = useMemo(() => {
+        const existing = FIELD_ANALYSES.find(a => a.fieldId === params.id);
+        if (existing) return existing;
+        if (!field) return null;
+
+        // Generate synthetic analysis for new fields
+        return {
+            fieldId: field.id,
+            captureDate: new Date().toISOString(),
+            resolution: 5,
+            coverage: 100,
+            indices: {
+                ndvi: { min: 0.6, max: 0.85, avg: 0.72, std: 0.08 },
+                ndre: { min: 0.55, max: 0.78, avg: 0.65, std: 0.07 },
+                thermal: { min: 72, max: 82, avg: 76, std: 3.5 },
+            },
+            anomalies: [],
+        };
+    }, [params.id, field]);
+
+    const soilSamples = useMemo(() => {
+        const existing = SOIL_SAMPLES.filter(s => s.fieldId === params.id);
+        if (existing.length > 0) return existing;
+        return [];
+    }, [params.id]);
+
+    const zones = useMemo(() => {
+        const existing = MANAGEMENT_ZONES.filter(z => z.fieldId === params.id);
+        if (existing.length > 0) return existing;
+        return [];
+    }, [params.id]);
 
     const [activeLayer, setActiveLayer] = useState('ndvi');
     const [comparisonMode, setComparisonMode] = useState(false);
@@ -81,6 +119,155 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
         setScoutingReportOpen(true);
     };
 
+    const [isProcessing, setIsProcessing] = useState(true);
+    const [isEditing, setIsEditing] = useState(false);
+    const [editBoundary, setEditBoundary] = useState<[number, number][]>([]);
+    const [draggedPinIndex, setDraggedPinIndex] = useState<number | null>(null);
+    const mapContainerRef = useRef<SVGSVGElement>(null);
+
+    // Initialize edit boundary when entering edit mode
+    useEffect(() => {
+        if (isEditing && field) {
+            setEditBoundary(field.coordinates);
+        }
+    }, [isEditing, field]);
+
+    const isNewField = params.id.startsWith('field-') && !['field-1', 'field-2', 'field-3', 'field-4', 'field-5'].includes(params.id);
+
+    // Editing Handlers
+    const handleSimulatedClick = (e: React.MouseEvent<SVGSVGElement>) => {
+        if (!isEditing || !mapContainerRef.current || draggedPinIndex !== null) return;
+
+        const rect = mapContainerRef.current.getBoundingClientRect();
+        const clickX = (e.clientX - rect.left) / zoom;
+        const clickY = (e.clientY - rect.top) / zoom;
+        const width = mapContainerRef.current.clientWidth;
+        const height = mapContainerRef.current.clientHeight;
+
+        const pinThreshold = 15; // pixels - don't add pin if clicking on existing pin
+        const lineThreshold = 10; // pixels - distance to line to insert pin
+
+        // Check if clicking on an existing pin
+        for (let i = 0; i < editBoundary.length; i++) {
+            const p = editBoundary[i];
+            const px = ((p[0] - 44.8) / 0.05 + 0.5) * width;
+            const py = (-(p[1] - 41.7) / 0.05 + 0.5) * height;
+            const dist = Math.sqrt((clickX - px) ** 2 + (clickY - py) ** 2);
+            
+            if (dist < pinThreshold) {
+                // Clicking on a pin, don't add new pin
+                return;
+            }
+        }
+
+        const lng = 44.8 + (clickX / width - 0.5) * 0.05;
+        const lat = 41.7 - (clickY / height - 0.5) * 0.05;
+
+        // Check if click is near a line segment to insert pin there
+        let insertIndex = editBoundary.length;
+
+        for (let i = 0; i < editBoundary.length; i++) {
+            const p1 = editBoundary[i];
+            const p2 = editBoundary[(i + 1) % editBoundary.length];
+
+            const x1 = ((p1[0] - 44.8) / 0.05 + 0.5) * width;
+            const y1 = (-(p1[1] - 41.7) / 0.05 + 0.5) * height;
+            const x2 = ((p2[0] - 44.8) / 0.05 + 0.5) * width;
+            const y2 = (-(p2[1] - 41.7) / 0.05 + 0.5) * height;
+
+            // Distance from point to line segment
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const len2 = dx * dx + dy * dy;
+            let t = ((clickX - x1) * dx + (clickY - y1) * dy) / len2;
+            t = Math.max(0, Math.min(1, t));
+
+            const projX = x1 + t * dx;
+            const projY = y1 + t * dy;
+            const dist = Math.sqrt((clickX - projX) ** 2 + (clickY - projY) ** 2);
+
+            if (dist < lineThreshold) {
+                insertIndex = i + 1;
+                break;
+            }
+        }
+
+        setEditBoundary(prev => {
+            const newBoundary = [...prev];
+            newBoundary.splice(insertIndex, 0, [lng, lat]);
+            return newBoundary;
+        });
+    };
+
+    const handleSimulatedMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+        if (!isEditing || draggedPinIndex === null || !mapContainerRef.current) return;
+
+        const rect = mapContainerRef.current.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / zoom;
+        const y = (e.clientY - rect.top) / zoom;
+        const width = mapContainerRef.current.clientWidth;
+        const height = mapContainerRef.current.clientHeight;
+
+        // Use fixed coordinate system like AddFieldModal
+        const lng = 44.8 + (x / width - 0.5) * 0.05;
+        const lat = 41.7 - (y / height - 0.5) * 0.05;
+
+        setEditBoundary(prev => {
+            const newBoundary = [...prev];
+            newBoundary[draggedPinIndex] = [lng, lat];
+
+            // If point 0 changes and it's a closed polygon, update the last point too
+            if (draggedPinIndex === 0 && newBoundary.length > 2 &&
+                newBoundary[0][0] === newBoundary[newBoundary.length - 1][0] &&
+                newBoundary[0][1] === newBoundary[newBoundary.length - 1][1]) {
+                newBoundary[newBoundary.length - 1] = [lng, lat];
+            }
+            return newBoundary;
+        });
+    };
+
+    const handlePinMouseDown = (e: React.MouseEvent, index: number) => {
+        if (!isEditing) return;
+        e.stopPropagation();
+        setDraggedPinIndex(index);
+    };
+
+    const handleMouseUp = () => {
+        setDraggedPinIndex(null);
+    };
+
+    const handleSaveBoundary = () => {
+        if (!field) return;
+
+        // Recalculate Acres
+        let newAcres = field.acres;
+        if (editBoundary.length > 2) {
+            try {
+                const polygon = turf.polygon([editBoundary]);
+                newAcres = parseFloat(areaToAcres(turf.area(polygon)).toFixed(1));
+            } catch (e) { }
+        }
+
+        updateField(field.id, {
+            coordinates: editBoundary,
+            acres: newAcres
+        });
+        setIsEditing(false);
+    };
+
+    const handleCancelEdit = () => {
+        setIsEditing(false);
+        setEditBoundary([]);
+    };
+
+    // Simulate processing completion for new fields
+    useEffect(() => {
+        if (isNewField && isProcessing) {
+            const timer = setTimeout(() => setIsProcessing(false), 4500);
+            return () => clearTimeout(timer);
+        }
+    }, [isNewField, isProcessing]);
+
     const generatedOverlays = useMemo(() => {
         if (!field) return {};
         return {
@@ -91,7 +278,23 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
     }, [field]);
 
     if (!field) {
-        return <div>Field not found</div>;
+        return (
+            <AppShell>
+                <div className="h-full flex items-center justify-center p-6">
+                    <div className="text-center">
+                        <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
+                            <AlertTriangle className="w-8 h-8 text-red-400" />
+                        </div>
+                        <h2 className="text-2xl font-bold mb-2">Field Not Found</h2>
+                        <p className="text-muted-foreground mb-6">The field you are looking for does not exist or has been removed.</p>
+                        <Link href="/fields" className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-xl font-bold">
+                            <ArrowLeft className="w-4 h-4" />
+                            Return to Fields
+                        </Link>
+                    </div>
+                </div>
+            </AppShell>
+        );
     }
 
     const currentLayer = MULTISPECTRAL_LAYERS.find(l => l.id === activeLayer);
@@ -111,7 +314,7 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
         <AppShell>
             <div className="h-full flex flex-col">
                 {/* Header */}
-                <div className="p-6 border-b border-white/10">
+                <div className="p-4 md:p-6 border-b border-white/10 shrink-0">
                     <Link href="/fields" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4">
                         <ArrowLeft className="w-4 h-4" />
                         Back to Fields
@@ -149,6 +352,27 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
                                 <Bug className="w-4 h-4" />
                                 Pest & Disease
                             </button>
+                            <button
+                                onClick={() => isEditing ? handleCancelEdit() : setIsEditing(true)}
+                                className={cn(
+                                    "px-4 py-2 rounded-lg flex items-center gap-2 transition-colors",
+                                    isEditing
+                                        ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/20"
+                                        : "bg-white/5 hover:bg-white/10 text-yellow-400 border border-yellow-400/20"
+                                )}
+                            >
+                                {isEditing ? <X className="w-4 h-4" /> : <Edit3 className="w-4 h-4" />}
+                                {isEditing ? 'Cancel Edit' : 'Edit Boundary'}
+                            </button>
+                            {isEditing && (
+                                <button
+                                    onClick={handleSaveBoundary}
+                                    className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center gap-2 transition-colors shadow-lg shadow-green-500/20"
+                                >
+                                    <CheckCircle className="w-4 h-4" />
+                                    Save Changes
+                                </button>
+                            )}
                             <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 flex items-center gap-2 transition-colors">
                                 <Download className="w-4 h-4" />
                                 Export Data
@@ -158,9 +382,9 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
                 </div>
 
                 <div className="flex-1 overflow-y-auto">
-                    <div className="container mx-auto px-4 py-8 space-y-8">
+                    <div className="w-full px-4 md:px-6 py-6 md:py-8 space-y-6 md:space-y-8">
                         {/* Map View Section */}
-                        <div className="h-[600px] relative bg-black rounded-2xl overflow-hidden border border-white/10">
+                        <div className="h-[600px] md:h-[1000px] relative bg-black rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
                             {/* Multispectral Image Display */}
                             {/* Multispectral Image Display */}
                             {comparisonMode ? (
@@ -219,12 +443,170 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
                                         className="w-full h-full relative"
                                     >
                                         <Image
-                                            src={LAYER_IMAGES[activeLayer]}
+                                            src={activeLayer === 'rgb' && field.image ? field.image : LAYER_IMAGES[activeLayer]}
                                             alt={currentLayer?.name || ''}
                                             fill
-                                            className="object-cover"
+                                            className="object-contain"
                                             priority
                                         />
+
+                                        {/* Field Boundary Overlay (Drawn with pins) */}
+                                        <div className="absolute inset-0 z-20">
+                                            {isEditing ? (
+                                                /* EDIT MODE: Simple pixel-based SVG */
+                                                <svg
+                                                    className="w-full h-full absolute inset-0"
+                                                    ref={mapContainerRef}
+                                                    onClick={handleSimulatedClick}
+                                                    onMouseMove={handleSimulatedMouseMove}
+                                                    onMouseUp={handleMouseUp}
+                                                    onMouseLeave={handleMouseUp}
+                                                >
+                                                    {editBoundary.length > 1 && (() => {
+                                                        const width = mapContainerRef.current?.clientWidth || 0;
+                                                        const height = mapContainerRef.current?.clientHeight || 0;
+                                                        if (!width || !height) return null;
+                                                        
+                                                        const points = editBoundary.map(coord => {
+                                                            const x = ((coord[0] - 44.8) / 0.05 + 0.5) * width;
+                                                            const y = (-(coord[1] - 41.7) / 0.05 + 0.5) * height;
+                                                            return [x, y];
+                                                        });
+
+                                                        return (
+                                                            <>
+                                                                <polyline
+                                                                    points={points.map(p => `${p[0]},${p[1]}`).join(" ")}
+                                                                    fill="rgba(34, 197, 94, 0.3)"
+                                                                    stroke="#22c55e"
+                                                                    strokeWidth="3"
+                                                                />
+                                                                {editBoundary.length > 2 && (
+                                                                    <line
+                                                                        x1={points[points.length - 1][0]}
+                                                                        y1={points[points.length - 1][1]}
+                                                                        x2={points[0][0]}
+                                                                        y2={points[0][1]}
+                                                                        stroke="#22c55e"
+                                                                        strokeWidth="3"
+                                                                    />
+                                                                )}
+                                                            </>
+                                                        );
+                                                    })()}
+                                                    {editBoundary.map((coord, i) => {
+                                                        const width = mapContainerRef.current?.clientWidth || 0;
+                                                        const height = mapContainerRef.current?.clientHeight || 0;
+                                                        if (!width || !height) return null;
+                                                        const x = ((coord[0] - 44.8) / 0.05 + 0.5) * width;
+                                                        const y = (-(coord[1] - 41.7) / 0.05 + 0.5) * height;
+
+                                                        return (
+                                                            <circle
+                                                                key={i}
+                                                                cx={x}
+                                                                cy={y}
+                                                                r="5"
+                                                                fill={i === 0 ? "#ef4444" : "#22c55e"}
+                                                                stroke="white"
+                                                                strokeWidth="2"
+                                                                style={{ cursor: draggedPinIndex === i ? 'grabbing' : 'grab', pointerEvents: 'auto' }}
+                                                                onMouseDown={(e) => handlePinMouseDown(e, i)}
+                                                            />
+                                                        );
+                                                    })}
+                                                </svg>
+                                            ) : (
+                                                /* VIEW MODE: Simple Scaled SVG */
+                                                <svg
+                                                    viewBox="0 0 100 100"
+                                                    className="w-full h-full"
+                                                    preserveAspectRatio="xMidYMid meet"
+                                                >
+                                                    {field.coordinates && field.coordinates.length > 2 && (() => {
+                                                        const coords = field.coordinates;
+                                                        // NOTE: Ideally we use the same projection as edit mode for consistency, 
+                                                        // but the view mode uses normalized bounding box logic to "zoom fit" the shape.
+                                                        // We will keep view mode as is for now to avoid breaking the "Detail View",
+                                                        // or we could switch to the simulation projection if we wanted 100% visual parity.
+                                                        // Given the user wants "edit straight in the page", let's keep view mode focused on the shape.
+
+                                                        const lons = coords.map(c => c[0]);
+                                                        const lats = coords.map(c => c[1]);
+                                                        const minLon = Math.min(...lons);
+                                                        const maxLon = Math.max(...lons);
+                                                        const minLat = Math.min(...lats);
+                                                        const maxLat = Math.max(...lats);
+
+                                                        const deltaLon = maxLon - minLon || 0.001;
+                                                        const deltaLat = maxLat - minLat || 0.001;
+
+                                                        const normalizedCoords = coords.map(c => {
+                                                            const x = ((c[0] - minLon) / deltaLon) * 80 + 10;
+                                                            const y = 90 - ((c[1] - minLat) / deltaLat) * 80;
+                                                            return { x, y };
+                                                        });
+
+                                                        const points = normalizedCoords.map(c => `${c.x},${c.y}`).join(' ');
+
+                                                        return (
+                                                            <>
+                                                                <polygon
+                                                                    points={points}
+                                                                    fill="rgba(34, 197, 94, 0.15)"
+                                                                    stroke="#22c55e"
+                                                                    strokeWidth="0.5"
+                                                                    vectorEffect="non-scaling-stroke"
+                                                                />
+                                                                {normalizedCoords.map((c, i) => (
+                                                                    <circle
+                                                                        key={i}
+                                                                        cx={c.x}
+                                                                        cy={c.y}
+                                                                        r={i === 0 ? "1.5" : "1"}
+                                                                        fill={i === 0 ? "#ef4444" : "#22c55e"}
+                                                                        stroke="white"
+                                                                        strokeWidth="0.2"
+                                                                    />
+                                                                ))}
+                                                            </>
+                                                        );
+                                                    })()}
+                                                </svg>
+                                            )}
+                                        </div>
+
+                                        {isNewField && isProcessing && (
+                                            <div className="absolute inset-0 z-40 bg-black/40 backdrop-blur-[2px] flex items-center justify-center p-8 text-center">
+                                                <div className="max-w-md glass-panel p-8 rounded-3xl border-primary/20 shadow-2xl animate-in fade-in zoom-in duration-500">
+                                                    <div className="relative w-20 h-20 mx-auto mb-6">
+                                                        <div className="absolute inset-0 border-4 border-primary/20 rounded-full" />
+                                                        <div className="absolute inset-0 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                                                        <Zap className="absolute inset-0 m-auto w-8 h-8 text-primary animate-pulse" />
+                                                    </div>
+                                                    <h3 className="text-2xl font-bold mb-3 text-white">Processing Satellite Data</h3>
+                                                    <p className="text-sm text-white/70 leading-relaxed mb-6">
+                                                        We have queued a multispectral task for <strong>{field.name}</strong>.
+                                                        Initial health indices (NDVI, NDRE) are being calculated using our latest orbital pass.
+                                                    </p>
+                                                    <div className="flex flex-col gap-3">
+                                                        <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+                                                            <div className="h-full bg-primary animate-[shimmer_2s_infinite]" style={{ width: '65%' }} />
+                                                        </div>
+                                                        <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-primary mb-4">
+                                                            <span>Analyzing Spectral Bands</span>
+                                                            <span>65% Complete</span>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => setIsProcessing(false)}
+                                                            className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-bold transition-all border border-white/5"
+                                                        >
+                                                            Skip & View Analysis
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
 
                                         {/* Problem Overlays */}
                                         {activeProblemOverlays.map(overlayId => {
@@ -237,7 +619,7 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
                                                     className="absolute inset-0 pointer-events-none"
                                                     style={{ opacity: overlayOpacity / 100 }}
                                                 >
-                                                    <img src={svgDataUrl} alt={`${overlayId} overlay`} className="w-full h-full object-cover" />
+                                                    <img src={svgDataUrl} alt={`${overlayId} overlay`} className="w-full h-full object-contain" />
                                                 </div>
                                             );
                                         })}
@@ -508,6 +890,7 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
                     onClose={() => setPlantCountOpen(false)}
                     fieldId={field.id}
                 />
+
             </div >
         </AppShell >
     );

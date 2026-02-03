@@ -21,6 +21,7 @@ export interface Field {
     healthStatus: 'excellent' | 'good' | 'attention' | 'critical';
     lastFlightDate: string;
     coordinates: [number, number][]; // GeoJSON polygon
+    image?: string;
 }
 
 export interface Drone {

@@ -4,10 +4,12 @@ import React from 'react';
 import Link from 'next/link';
 import { TrendingUp, TrendingDown, Minus, AlertTriangle } from 'lucide-react';
 import { Widget } from '@/components/dashboard/DashboardGrid';
-import { FIELDS } from '@/lib/mock-data';
+import { useFieldStore } from '@/lib/field-store';
 import { cn } from '@/lib/utils';
 
 export function FieldHealthCard() {
+    const { fields } = useFieldStore();
+
     const getHealthColor = (status: string) => {
         switch (status) {
             case 'excellent': return 'from-green-500 to-emerald-600';
@@ -23,18 +25,29 @@ export function FieldHealthCard() {
     return (
         <Widget title="Field Health Overview" className="col-span-2">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {FIELDS.map((field) => (
+                {fields.map((field) => (
                     <Link
                         key={field.id}
                         href={`/fields/${field.id}`}
-                        className="group relative overflow-hidden rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition-all cursor-pointer"
+                        className="group relative overflow-hidden rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition-all cursor-pointer block"
                     >
-                        {/* NDVI Heatmap Simulation */}
-                        <div className={cn(
-                            "h-24 bg-gradient-to-br",
-                            getHealthColor(field.healthStatus),
-                            "opacity-30 group-hover:opacity-40 transition-opacity"
-                        )} />
+                        {/* Field Image or NDVI Heatmap Simulation */}
+                        {field.image ? (
+                            <div className="absolute inset-0 h-full w-full">
+                                <img
+                                    src={field.image}
+                                    alt={field.name}
+                                    className="h-24 w-full object-contain opacity-50 group-hover:opacity-60 transition-opacity"
+                                />
+                                <div className="absolute inset-0 h-24 bg-gradient-to-t from-black/60 to-transparent" />
+                            </div>
+                        ) : (
+                            <div className={cn(
+                                "h-24 bg-gradient-to-br",
+                                getHealthColor(field.healthStatus),
+                                "opacity-30 group-hover:opacity-40 transition-opacity"
+                            )} />
+                        )}
 
                         {/* Field Info Overlay */}
                         <div className="absolute inset-0 p-3 flex flex-col justify-between">
@@ -86,7 +99,7 @@ export function FieldHealthCard() {
 
             <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Total Coverage</span>
-                <span className="font-medium">{FIELDS.reduce((sum, f) => sum + f.acres, 0)} acres</span>
+                <span className="font-medium">{fields.reduce((sum, f) => sum + f.acres, 0)} acres</span>
             </div>
         </Widget>
     );

@@ -125,7 +125,7 @@ export function AppShell({ children }: AppShellProps) {
                     </div>
 
                     {/* Command Bar Container */}
-                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-xl">
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl">
                         <CommandBar />
                     </div>
 
@@ -144,7 +144,7 @@ export function AppShell({ children }: AppShellProps) {
                 </header>
 
                 {/* Content */}
-                <div className="flex-1 relative overflow-hidden">
+                <div className="flex-1 relative overflow-hidden px-2 md:px-6">
                     {children}
                 </div>
             </main>
