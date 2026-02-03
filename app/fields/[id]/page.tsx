@@ -11,7 +11,7 @@ import {
 import {
     ArrowLeft, Layers, MapPin, Droplets, Thermometer,
     Leaf, AlertTriangle, Download, Share2, Calendar,
-    Zap, Target, GitCompare, Bug, Calculator, User, CheckCircle, Edit3, X
+    Zap, Target, GitCompare, Bug, Calculator, User, CheckCircle, Edit3, X, Camera
 } from 'lucide-react';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
@@ -22,7 +22,7 @@ import { PestDiseaseMonitorModal } from '@/components/modals/PestDiseaseMonitorM
 import { ScoutingScheduleModal } from '@/components/modals/ScoutingScheduleModal';
 import { ScoutingReportModal } from '@/components/modals/ScoutingReportModal';
 import { PlantCountModal } from '@/components/modals/PlantCountModal';
-// Removed EditFieldModal import
+import { ImageUploadModal } from '@/components/modals/ImageUploadModal';
 
 import { ScoutingStorage, type ScoutingMission } from '@/lib/scouting-data';
 import Image from 'next/image';
@@ -107,6 +107,7 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
     const [scoutingScheduleOpen, setScoutingScheduleOpen] = useState(false);
     const [scoutingReportOpen, setScoutingReportOpen] = useState(false);
     const [plantCountOpen, setPlantCountOpen] = useState(false);
+    const [imageUploadOpen, setImageUploadOpen] = useState(false);
     const [activeScoutingMission, setActiveScoutingMission] = useState<ScoutingMission | null>(null);
     const [scoutingMissions, setScoutingMissions] = useState<ScoutingMission[]>([]);
 
@@ -153,7 +154,7 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
             const px = ((p[0] - 44.8) / 0.05 + 0.5) * width;
             const py = (-(p[1] - 41.7) / 0.05 + 0.5) * height;
             const dist = Math.sqrt((clickX - px) ** 2 + (clickY - py) ** 2);
-            
+
             if (dist < pinThreshold) {
                 // Clicking on a pin, don't add new pin
                 return;
@@ -373,6 +374,13 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
                                     Save Changes
                                 </button>
                             )}
+                            <button
+                                onClick={() => setImageUploadOpen(true)}
+                                className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg flex items-center gap-2 transition-colors"
+                            >
+                                <Camera className="w-4 h-4" />
+                                Upload Photo
+                            </button>
                             <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 flex items-center gap-2 transition-colors">
                                 <Download className="w-4 h-4" />
                                 Export Data
@@ -466,7 +474,7 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
                                                         const width = mapContainerRef.current?.clientWidth || 0;
                                                         const height = mapContainerRef.current?.clientHeight || 0;
                                                         if (!width || !height) return null;
-                                                        
+
                                                         const points = editBoundary.map(coord => {
                                                             const x = ((coord[0] - 44.8) / 0.05 + 0.5) * width;
                                                             const y = (-(coord[1] - 41.7) / 0.05 + 0.5) * height;
@@ -891,6 +899,11 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
                     fieldId={field.id}
                 />
 
+                <ImageUploadModal
+                    isOpen={imageUploadOpen}
+                    onClose={() => setImageUploadOpen(false)}
+                    preselectedFieldId={field.id}
+                />
             </div >
         </AppShell >
     );

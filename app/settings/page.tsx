@@ -1,3 +1,5 @@
+'use client';
+
 import { AppShell } from '@/components/layout/AppShell';
 import { Settings as SettingsIcon, User, Bell, Database, Shield, Palette } from 'lucide-react';
 
