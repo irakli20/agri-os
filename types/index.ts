@@ -82,7 +82,7 @@ export interface MapStore {
     basemapStyle: BasemapStyle;
     layers: Layer[];
     selectedField: Field | null;
-    activeBand: 'rgb' | 'ndvi' | 'thermal';
+    activeBand: 'rgb' | 'ndvi' | 'ndre' | 'thermal';
     layerOpacity: number;
 
     // Actions
@@ -91,6 +91,6 @@ export interface MapStore {
     addLayer: (layer: Layer) => void;
     removeLayer: (layerId: string) => void;
     setSelectedField: (field: Field | null) => void;
-    setActiveBand: (band: 'rgb' | 'ndvi' | 'thermal') => void;
+    setActiveBand: (band: 'rgb' | 'ndvi' | 'ndre' | 'thermal') => void;
     setLayerOpacity: (opacity: number) => void;
 }

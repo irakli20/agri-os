@@ -4,12 +4,15 @@ import React, { useState } from 'react';
 import { CheckCircle2, Clock, AlertCircle, Plus } from 'lucide-react';
 import { CreateTaskModal } from '@/components/modals/CreateTaskModal';
 import { Widget } from '@/components/dashboard/DashboardGrid';
-import { TASKS, FIELDS, DRONES } from '@/lib/mock-data';
+import { TASKS, DRONES } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
+import { useFieldStore } from '@/lib/field-store';
+import Link from 'next/link';
 
 export function TaskListCard() {
+    const { fields } = useFieldStore();
     const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
-    const getFieldName = (fieldId: string) => FIELDS.find(f => f.id === fieldId)?.name || 'Unknown';
+    const getFieldName = (fieldId: string) => fields.find(f => f.id === fieldId)?.name || 'Unknown';
     const getDroneName = (droneId: string) => DRONES.find(d => d.id === droneId)?.model || 'Unknown';
 
     return (
@@ -58,7 +61,12 @@ export function TaskListCard() {
                             <p className="text-sm font-medium mb-1">{task.description}</p>
 
                             <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-                                <span>📍 {getFieldName(task.fieldId)}</span>
+                                <Link
+                                    href={`/fields/${task.fieldId}`}
+                                    className="hover:text-primary transition-colors flex items-center gap-1"
+                                >
+                                    📍 {getFieldName(task.fieldId)}
+                                </Link>
                                 <span>🚁 {getDroneName(task.droneId).split(' ')[0]}</span>
                                 <span>📅 {new Date(task.scheduledDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                             </div>

@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useMapStore } from '@/lib/map-store';
 
 interface MapStateUpdaterProps {
-    activeBand?: 'rgb' | 'ndvi' | 'thermal';
+    activeBand?: 'rgb' | 'ndvi' | 'ndre' | 'thermal';
     zoom?: number;
     latitude?: number;
     longitude?: number;

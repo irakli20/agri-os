@@ -70,6 +70,14 @@ export async function submitUserMessage(content: string): Promise<ClientMessage>
                     <SpectrumSlider />
                 </div>
             );
+        } else if (lowerContent.includes('ndre') || lowerContent.includes('red edge')) {
+            ui = (
+                <div className="bg-card/95 backdrop-blur-sm border rounded-lg p-4 text-sm shadow-lg space-y-2">
+                    <p>Switching to NDRE view for nitrogen analysis.</p>
+                    <MapStateUpdater activeBand="ndre" />
+                    <SpectrumSlider />
+                </div>
+            );
         } else if (lowerContent.includes('rgb') || lowerContent.includes('visual')) {
             ui = (
                 <div className="bg-card/95 backdrop-blur-sm border rounded-lg p-4 text-sm shadow-lg space-y-2">
@@ -117,6 +125,7 @@ export async function submitUserMessage(content: string): Promise<ClientMessage>
       GUIDELINES:
       - If the user asks to see "NDVI" or "plant health", use updateMapState to switch the band AND showComponent('spectrum-slider') so they can control it.
       - If the user asks about "thermal" or "heat", switch to 'thermal' band.
+      - If the user asks about "red edge" or "nitrogen", switch to 'ndre' band.
       - Be concise in your text responses.
     `,
         messages: [
@@ -142,7 +151,7 @@ export async function submitUserMessage(content: string): Promise<ClientMessage>
             updateMapState: {
                 description: 'Update the map view state or active spectral band',
                 parameters: z.object({
-                    activeBand: z.enum(['rgb', 'ndvi', 'thermal']).optional(),
+                    activeBand: z.enum(['rgb', 'ndvi', 'ndre', 'thermal']).optional(),
                     zoom: z.number().optional(),
                     latitude: z.number().optional(),
                     longitude: z.number().optional(),

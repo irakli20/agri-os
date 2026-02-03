@@ -3,11 +3,14 @@
 import React from 'react';
 import { Clock, MapPin, Database } from 'lucide-react';
 import { Widget } from '@/components/dashboard/DashboardGrid';
-import { RECENT_FLIGHTS, FIELDS, DRONES } from '@/lib/mock-data';
+import { RECENT_FLIGHTS, DRONES } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
+import { useFieldStore } from '@/lib/field-store';
+import Link from 'next/link';
 
 export function RecentFlightsCard() {
-    const getFieldName = (fieldId: string) => FIELDS.find(f => f.id === fieldId)?.name || 'Unknown';
+    const { fields } = useFieldStore();
+    const getFieldName = (fieldId: string) => fields.find(f => f.id === fieldId)?.name || 'Unknown';
     const getDroneName = (droneId: string) => DRONES.find(d => d.id === droneId)?.model || 'Unknown';
 
     const formatDate = (dateString: string) => {
@@ -44,7 +47,12 @@ export function RecentFlightsCard() {
                             <div className="flex items-start justify-between mb-2">
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 mb-1">
-                                        <span className="text-xs font-medium">{getFieldName(flight.fieldId)}</span>
+                                        <Link
+                                            href={`/fields/${flight.fieldId}`}
+                                            className="text-xs font-medium hover:text-primary transition-colors"
+                                        >
+                                            {getFieldName(flight.fieldId)}
+                                        </Link>
                                         <span className="text-[10px] text-muted-foreground">
                                             {getDroneName(flight.droneId).split(' ')[0]}
                                         </span>

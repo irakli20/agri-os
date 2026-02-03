@@ -21,6 +21,7 @@
         "@radix-ui/react-slot": "^1.0.2",
         "@react-three/drei": "^10.7.7",
         "@react-three/fiber": "^8.16.8",
+        "@turf/turf": "^7.3.3",
         "@types/three": "^0.181.0",
         "ai": "^3.4.33",
         "class-variance-authority": "^0.7.0",

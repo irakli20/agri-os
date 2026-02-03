@@ -46,6 +46,10 @@
   background: transparent;
 }
 
+::-webkit-scrollbar-track:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
 ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.1);
   border-radius: 3px;
@@ -127,4 +131,13 @@
     @apply absolute bg-card/95 backdrop-blur-sm border rounded-lg shadow-lg;
     @apply animate-in fade-in-0 zoom-in-95;
   }
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite linear;
 }
