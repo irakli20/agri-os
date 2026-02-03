@@ -123,7 +123,7 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
     const [isEditing, setIsEditing] = useState(false);
     const [editBoundary, setEditBoundary] = useState<[number, number][]>([]);
     const [draggedPinIndex, setDraggedPinIndex] = useState<number | null>(null);
-    const mapContainerRef = useRef<HTMLDivElement>(null);
+    const mapContainerRef = useRef<SVGSVGElement>(null);
 
     // Initialize edit boundary when entering edit mode
     useEffect(() => {
@@ -135,31 +135,88 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
     const isNewField = params.id.startsWith('field-') && !['field-1', 'field-2', 'field-3', 'field-4', 'field-5'].includes(params.id);
 
     // Editing Handlers
-    const handleSimulatedClick = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!isEditing || !IS_PLACEHOLDER_TOKEN || !mapContainerRef.current || draggedPinIndex !== null) return;
-        // In "Closed Polygon" mode (editing existing field), we generally don't add new points by clicking
-        // But if the user wants to add points to an existing field, we'd need more logic. 
-        // For now, let's assume editing is mostly adjusting existing pins for closed fields.
-        // If we want to allow adding points, we need collision detection on lines.
-        // The user request emphasizes "moving pins".
-        // However, if the polygon isn't closed (which shouldn't happen for existing fields), we might add points.
+    const handleSimulatedClick = (e: React.MouseEvent<SVGSVGElement>) => {
+        if (!isEditing || !mapContainerRef.current || draggedPinIndex !== null) return;
+
+        const rect = mapContainerRef.current.getBoundingClientRect();
+        const clickX = (e.clientX - rect.left) / zoom;
+        const clickY = (e.clientY - rect.top) / zoom;
+        const width = mapContainerRef.current.clientWidth;
+        const height = mapContainerRef.current.clientHeight;
+
+        const pinThreshold = 15; // pixels - don't add pin if clicking on existing pin
+        const lineThreshold = 10; // pixels - distance to line to insert pin
+
+        // Check if clicking on an existing pin
+        for (let i = 0; i < editBoundary.length; i++) {
+            const p = editBoundary[i];
+            const px = ((p[0] - 44.8) / 0.05 + 0.5) * width;
+            const py = (-(p[1] - 41.7) / 0.05 + 0.5) * height;
+            const dist = Math.sqrt((clickX - px) ** 2 + (clickY - py) ** 2);
+            
+            if (dist < pinThreshold) {
+                // Clicking on a pin, don't add new pin
+                return;
+            }
+        }
+
+        const lng = 44.8 + (clickX / width - 0.5) * 0.05;
+        const lat = 41.7 - (clickY / height - 0.5) * 0.05;
+
+        // Check if click is near a line segment to insert pin there
+        let insertIndex = editBoundary.length;
+
+        for (let i = 0; i < editBoundary.length; i++) {
+            const p1 = editBoundary[i];
+            const p2 = editBoundary[(i + 1) % editBoundary.length];
+
+            const x1 = ((p1[0] - 44.8) / 0.05 + 0.5) * width;
+            const y1 = (-(p1[1] - 41.7) / 0.05 + 0.5) * height;
+            const x2 = ((p2[0] - 44.8) / 0.05 + 0.5) * width;
+            const y2 = (-(p2[1] - 41.7) / 0.05 + 0.5) * height;
+
+            // Distance from point to line segment
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const len2 = dx * dx + dy * dy;
+            let t = ((clickX - x1) * dx + (clickY - y1) * dy) / len2;
+            t = Math.max(0, Math.min(1, t));
+
+            const projX = x1 + t * dx;
+            const projY = y1 + t * dy;
+            const dist = Math.sqrt((clickX - projX) ** 2 + (clickY - projY) ** 2);
+
+            if (dist < lineThreshold) {
+                insertIndex = i + 1;
+                break;
+            }
+        }
+
+        setEditBoundary(prev => {
+            const newBoundary = [...prev];
+            newBoundary.splice(insertIndex, 0, [lng, lat]);
+            return newBoundary;
+        });
     };
 
-    const handleSimulatedMouseMove = (e: React.MouseEvent) => {
+    const handleSimulatedMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
         if (!isEditing || draggedPinIndex === null || !mapContainerRef.current) return;
 
         const rect = mapContainerRef.current.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        const x = (e.clientX - rect.left) / zoom;
+        const y = (e.clientY - rect.top) / zoom;
+        const width = mapContainerRef.current.clientWidth;
+        const height = mapContainerRef.current.clientHeight;
 
-        // Uses EXACT hardcoded center from AddFieldModal
-        const lng = 44.8 + (x / rect.width - 0.5) * 0.05;
-        const lat = 41.7 - (y / rect.height - 0.5) * 0.05;
+        // Use fixed coordinate system like AddFieldModal
+        const lng = 44.8 + (x / width - 0.5) * 0.05;
+        const lat = 41.7 - (y / height - 0.5) * 0.05;
 
         setEditBoundary(prev => {
             const newBoundary = [...prev];
             newBoundary[draggedPinIndex] = [lng, lat];
-            // If point 0 changes and it's a closed polygon, update the last point too to keep it closed
+
+            // If point 0 changes and it's a closed polygon, update the last point too
             if (draggedPinIndex === 0 && newBoundary.length > 2 &&
                 newBoundary[0][0] === newBoundary[newBoundary.length - 1][0] &&
                 newBoundary[0][1] === newBoundary[newBoundary.length - 1][1]) {
@@ -389,89 +446,82 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
                                             src={activeLayer === 'rgb' && field.image ? field.image : LAYER_IMAGES[activeLayer]}
                                             alt={currentLayer?.name || ''}
                                             fill
-                                            className="object-cover"
+                                            className="object-contain"
                                             priority
                                         />
 
                                         {/* Field Boundary Overlay (Drawn with pins) */}
-                                        <div className="absolute inset-0 z-20 pointer-events-none">
+                                        <div className="absolute inset-0 z-20">
                                             {isEditing ? (
-                                                /* EDIT MODE: Interactive Map Simulation */
-                                                <div
+                                                /* EDIT MODE: Simple pixel-based SVG */
+                                                <svg
+                                                    className="w-full h-full absolute inset-0"
                                                     ref={mapContainerRef}
-                                                    className="absolute inset-0 w-full h-full pointer-events-auto cursor-crosshair"
                                                     onClick={handleSimulatedClick}
                                                     onMouseMove={handleSimulatedMouseMove}
                                                     onMouseUp={handleMouseUp}
                                                     onMouseLeave={handleMouseUp}
                                                 >
-                                                    {/* Use mapbox satellite backdrop in edit mode if placeholder */}
-                                                    {IS_PLACEHOLDER_TOKEN && (
-                                                        <div
-                                                            className="absolute inset-0 z-0"
-                                                            style={{
-                                                                backgroundImage: `url(${field.image || LAYER_IMAGES['ndvi'] || '/ndvi-field.png'})`, // Use field image or default
-                                                                backgroundSize: 'cover',
-                                                                backgroundPosition: 'center'
-                                                            }}
-                                                        />
-                                                    )}
-
-                                                    <svg className="w-full h-full relative z-10">
-                                                        {editBoundary.length > 1 && (
-                                                            <polyline
-                                                                points={editBoundary.map(coord => {
-                                                                    const rect = mapContainerRef.current?.getBoundingClientRect();
-                                                                    if (!rect) return "0,0";
-                                                                    const x = ((coord[0] - 44.8) / 0.05 + 0.5) * rect.width;
-                                                                    const y = (-(coord[1] - 41.7) / 0.05 + 0.5) * rect.height;
-                                                                    return `${x},${y}`;
-                                                                }).join(" ")}
-                                                                fill="rgba(34, 197, 94, 0.3)"
-                                                                stroke="#22c55e"
-                                                                strokeWidth="3"
-                                                            />
-                                                        )}
-                                                        {/* Closing Line */}
-                                                        {editBoundary.length > 2 && (
-                                                            <line
-                                                                x1={((editBoundary[editBoundary.length - 1][0] - 44.8) / 0.05 + 0.5) * (mapContainerRef.current?.clientWidth || 0)}
-                                                                y1={(-(editBoundary[editBoundary.length - 1][1] - 41.7) / 0.05 + 0.5) * (mapContainerRef.current?.clientHeight || 0)}
-                                                                x2={((editBoundary[0][0] - 44.8) / 0.05 + 0.5) * (mapContainerRef.current?.clientWidth || 0)}
-                                                                y2={(-(editBoundary[0][1] - 41.7) / 0.05 + 0.5) * (mapContainerRef.current?.clientHeight || 0)}
-                                                                stroke="#22c55e"
-                                                                strokeWidth="3"
-                                                            />
-                                                        )}
-                                                    </svg>
-                                                    {editBoundary.map((coord, i) => {
-                                                        const rect = mapContainerRef.current?.getBoundingClientRect();
-                                                        if (!rect) return null;
-                                                        const x = ((coord[0] - 44.8) / 0.05 + 0.5) * rect.width;
-                                                        const y = (-(coord[1] - 41.7) / 0.05 + 0.5) * rect.height;
+                                                    {editBoundary.length > 1 && (() => {
+                                                        const width = mapContainerRef.current?.clientWidth || 0;
+                                                        const height = mapContainerRef.current?.clientHeight || 0;
+                                                        if (!width || !height) return null;
+                                                        
+                                                        const points = editBoundary.map(coord => {
+                                                            const x = ((coord[0] - 44.8) / 0.05 + 0.5) * width;
+                                                            const y = (-(coord[1] - 41.7) / 0.05 + 0.5) * height;
+                                                            return [x, y];
+                                                        });
 
                                                         return (
-                                                            <div
-                                                                key={i}
-                                                                className={cn(
-                                                                    "absolute w-5 h-5 -ml-2.5 -mt-2.5 rounded-full border-2 border-white shadow-xl flex items-center justify-center transition-all z-20",
-                                                                    i === 0 ? "bg-red-500 scale-125 cursor-pointer" : "bg-green-500 scale-100 cursor-move",
-                                                                    draggedPinIndex === i && "scale-150 shadow-2xl z-50 cursor-grabbing"
+                                                            <>
+                                                                <polyline
+                                                                    points={points.map(p => `${p[0]},${p[1]}`).join(" ")}
+                                                                    fill="rgba(34, 197, 94, 0.3)"
+                                                                    stroke="#22c55e"
+                                                                    strokeWidth="3"
+                                                                />
+                                                                {editBoundary.length > 2 && (
+                                                                    <line
+                                                                        x1={points[points.length - 1][0]}
+                                                                        y1={points[points.length - 1][1]}
+                                                                        x2={points[0][0]}
+                                                                        y2={points[0][1]}
+                                                                        stroke="#22c55e"
+                                                                        strokeWidth="3"
+                                                                    />
                                                                 )}
-                                                                style={{ left: x, top: y }}
+                                                            </>
+                                                        );
+                                                    })()}
+                                                    {editBoundary.map((coord, i) => {
+                                                        const width = mapContainerRef.current?.clientWidth || 0;
+                                                        const height = mapContainerRef.current?.clientHeight || 0;
+                                                        if (!width || !height) return null;
+                                                        const x = ((coord[0] - 44.8) / 0.05 + 0.5) * width;
+                                                        const y = (-(coord[1] - 41.7) / 0.05 + 0.5) * height;
+
+                                                        return (
+                                                            <circle
+                                                                key={i}
+                                                                cx={x}
+                                                                cy={y}
+                                                                r="5"
+                                                                fill={i === 0 ? "#ef4444" : "#22c55e"}
+                                                                stroke="white"
+                                                                strokeWidth="2"
+                                                                style={{ cursor: draggedPinIndex === i ? 'grabbing' : 'grab', pointerEvents: 'auto' }}
                                                                 onMouseDown={(e) => handlePinMouseDown(e, i)}
-                                                            >
-                                                                {i === 0 && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
-                                                            </div>
+                                                            />
                                                         );
                                                     })}
-                                                </div>
+                                                </svg>
                                             ) : (
                                                 /* VIEW MODE: Simple Scaled SVG */
                                                 <svg
                                                     viewBox="0 0 100 100"
                                                     className="w-full h-full"
-                                                    preserveAspectRatio="none"
+                                                    preserveAspectRatio="xMidYMid meet"
                                                 >
                                                     {field.coordinates && field.coordinates.length > 2 && (() => {
                                                         const coords = field.coordinates;
@@ -569,7 +619,7 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
                                                     className="absolute inset-0 pointer-events-none"
                                                     style={{ opacity: overlayOpacity / 100 }}
                                                 >
-                                                    <img src={svgDataUrl} alt={`${overlayId} overlay`} className="w-full h-full object-cover" />
+                                                    <img src={svgDataUrl} alt={`${overlayId} overlay`} className="w-full h-full object-contain" />
                                                 </div>
                                             );
                                         })}

@@ -37,7 +37,7 @@ export function FieldHealthCard() {
                                 <img
                                     src={field.image}
                                     alt={field.name}
-                                    className="h-24 w-full object-cover opacity-50 group-hover:opacity-60 transition-opacity"
+                                    className="h-24 w-full object-contain opacity-50 group-hover:opacity-60 transition-opacity"
                                 />
                                 <div className="absolute inset-0 h-24 bg-gradient-to-t from-black/60 to-transparent" />
                             </div>

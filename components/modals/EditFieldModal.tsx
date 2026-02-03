@@ -292,9 +292,10 @@ const EditFieldModal = ({ isOpen, onClose, field, onUpdate }: EditFieldModalProp
                             onMouseUp={handleMouseUp}
                             onMouseLeave={handleMouseUp}
                             style={IS_PLACEHOLDER_TOKEN ? {
-                                backgroundImage: 'url(/georgia-satellite.png)',
-                                backgroundSize: 'cover',
-                                backgroundPosition: 'center'
+                                backgroundImage: 'url(/ndvi-field.png)',
+                                backgroundSize: 'contain',
+                                backgroundPosition: 'center',
+                                backgroundRepeat: 'no-repeat'
                             } : {}}
                         />
 

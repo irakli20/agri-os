@@ -467,8 +467,9 @@ export function AddFieldModal({ isOpen, onClose, onSubmit }: AddFieldModalProps)
                                                 className="absolute inset-0"
                                                 style={IS_PLACEHOLDER_TOKEN ? {
                                                     backgroundImage: 'url(/ndvi-field.png)',
-                                                    backgroundSize: 'cover',
-                                                    backgroundPosition: 'center'
+                                                    backgroundSize: 'contain',
+                                                    backgroundPosition: 'center',
+                                                    backgroundRepeat: 'no-repeat'
                                                 } : {}}
                                             />
 
