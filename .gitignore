@@ -42,6 +42,8 @@ next-env.d.ts
 # OS
 .DS_Store
 Thumbs.db
+.agri-intelligence-pipeline.json
+.agri-model-tuning-state.json
 
 # Geospatial data (large files)
 *.tif

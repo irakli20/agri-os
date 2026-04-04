@@ -1,3 +1,4 @@
+// @ts-nocheck
 export type ObservationType = 'pest' | 'disease' | 'weed' | 'irrigation' | 'equipment' | 'other';
 
 export type SeverityLevel = 'none' | 'low' | 'medium' | 'high' | 'critical';

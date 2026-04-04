@@ -73,39 +73,40 @@ export default function CropsPage() {
 
     return (
         <AppShell>
-            <div className="p-6 space-y-6 overflow-y-auto h-full">
+            <div className="page-shell">
                 {/* Header */}
-                <div className="flex items-center justify-between">
+                <div className="page-header">
                     <div>
+                        <p className="page-header-meta">Agronomy Insights</p>
                         <h1 className="text-3xl font-bold">Crop Management</h1>
                         <p className="text-muted-foreground mt-1">
                             Monitor growth stages and manage {CROP_DATA.length} crop types
                         </p>
                     </div>
-                    <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
-                        + Add Crop Plan
+                    <button className="cta-primary">
+                        Add Crop Plan
                     </button>
                 </div>
 
                 {/* Crop Stats */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="glass-panel rounded-xl p-4">
+                <div className="page-kpi-grid">
+                    <div className="kpi-card">
                         <div className="text-sm text-muted-foreground mb-1">Active Crops</div>
                         <div className="text-2xl font-bold">{CROP_DATA.length}</div>
                     </div>
-                    <div className="glass-panel rounded-xl p-4">
+                    <div className="kpi-card">
                         <div className="text-sm text-muted-foreground mb-1">Avg. Days to Harvest</div>
                         <div className="text-2xl font-bold text-green-400">
                             {Math.round(CROP_DATA.reduce((sum, c) => sum + c.daysToHarvest, 0) / CROP_DATA.length)}
                         </div>
                     </div>
-                    <div className="glass-panel rounded-xl p-4">
+                    <div className="kpi-card">
                         <div className="text-sm text-muted-foreground mb-1">High Pest Pressure</div>
                         <div className="text-2xl font-bold text-red-400">
                             {CROP_DATA.filter(c => c.pestPressure === 'High').length}
                         </div>
                     </div>
-                    <div className="glass-panel rounded-xl p-4">
+                    <div className="kpi-card">
                         <div className="text-sm text-muted-foreground mb-1">High Water Needs</div>
                         <div className="text-2xl font-bold text-blue-400">
                             {CROP_DATA.filter(c => c.waterNeeds === 'High').length}
@@ -118,7 +119,7 @@ export default function CropsPage() {
                     {CROP_DATA.map((cropData) => (
                         <div
                             key={cropData.crop}
-                            className="glass-panel rounded-xl p-6 hover:bg-white/10 transition-all"
+                            className="card-soft rounded-2xl p-6 hover:bg-white/10 transition-all elevate-card"
                         >
                             <div className="flex items-start justify-between mb-6">
                                 <div className="flex items-center gap-4">

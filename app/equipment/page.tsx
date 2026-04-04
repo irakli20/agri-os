@@ -47,10 +47,11 @@ export default function EquipmentPage() {
 
     return (
         <AppShell>
-            <div className="p-6 space-y-6 overflow-y-auto h-full">
+            <div className="page-shell">
                 {/* Header */}
-                <div className="flex items-center justify-between">
+                <div className="page-header">
                     <div>
+                        <p className="page-header-meta">Asset Operations</p>
                         <h1 className="text-3xl font-bold">Equipment & Assets</h1>
                         <p className="text-muted-foreground mt-1">
                             Manage all farm equipment, machinery, and tools
@@ -58,29 +59,29 @@ export default function EquipmentPage() {
                     </div>
                     <button
                         onClick={() => setIsAddModalOpen(true)}
-                        className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                        className="cta-primary"
                     >
-                        + Add Equipment
+                        Add Equipment
                     </button>
                 </div>
 
                 {/* Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="glass-panel rounded-xl p-4">
+                <div className="page-kpi-grid">
+                    <div className="kpi-card">
                         <div className="text-sm text-muted-foreground mb-1">Total Equipment</div>
                         <div className="text-2xl font-bold">{stats.total}</div>
                         <div className="text-xs text-muted-foreground mt-1">
                             {stats.available} available
                         </div>
                     </div>
-                    <div className="glass-panel rounded-xl p-4">
+                    <div className="kpi-card">
                         <div className="text-sm text-muted-foreground mb-1">In Use</div>
                         <div className="text-2xl font-bold text-blue-400">{stats.inUse}</div>
                         <div className="text-xs text-muted-foreground mt-1">
                             {stats.utilizationRate}% utilization
                         </div>
                     </div>
-                    <div className="glass-panel rounded-xl p-4">
+                    <div className="kpi-card">
                         <div className="text-sm text-muted-foreground mb-1">Total Value</div>
                         <div className="text-2xl font-bold text-green-400">
                             ${(stats.totalValue / 1000).toFixed(0)}K
@@ -89,7 +90,7 @@ export default function EquipmentPage() {
                             Current market value
                         </div>
                     </div>
-                    <div className="glass-panel rounded-xl p-4">
+                    <div className="kpi-card">
                         <div className="text-sm text-muted-foreground mb-1">Maintenance Due</div>
                         <div className="text-2xl font-bold text-yellow-400">{maintenanceDue.length}</div>
                         <div className="text-xs text-muted-foreground mt-1">
@@ -99,14 +100,14 @@ export default function EquipmentPage() {
                 </div>
 
                 {/* Category Tabs */}
-                <div className="flex gap-2 overflow-x-auto pb-2">
+                <div className="segment-wrap w-fit overflow-x-auto">
                     <button
                         onClick={() => setActiveCategory('all')}
                         className={cn(
-                            "px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap",
+                            "segment-pill whitespace-nowrap",
                             activeCategory === 'all'
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-white/5 hover:bg-white/10"
+                                ? "segment-pill-active"
+                                : ""
                         )}
                     >
                         All Equipment
@@ -119,10 +120,10 @@ export default function EquipmentPage() {
                                 key={key}
                                 onClick={() => setActiveCategory(key as EquipmentCategory)}
                                 className={cn(
-                                    "px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex items-center gap-2",
+                                    "segment-pill whitespace-nowrap flex items-center gap-2",
                                     activeCategory === key
-                                        ? "bg-primary text-primary-foreground"
-                                        : "bg-white/5 hover:bg-white/10"
+                                        ? "segment-pill-active"
+                                        : ""
                                 )}
                             >
                                 <Icon className="w-4 h-4" />
@@ -141,7 +142,7 @@ export default function EquipmentPage() {
                         return (
                             <div
                                 key={equipment.id}
-                                className="glass-panel rounded-xl p-5 hover:bg-white/10 transition-all cursor-pointer group"
+                                className="card-soft rounded-2xl p-5 hover:bg-white/10 transition-all cursor-pointer group elevate-card"
                             >
                                 <div className="flex items-start justify-between mb-4">
                                     <div className="flex items-start gap-3">
@@ -247,7 +248,7 @@ export default function EquipmentPage() {
 
                 {/* Maintenance Alerts */}
                 {maintenanceDue.length > 0 && (
-                    <div className="glass-panel rounded-xl p-5">
+                    <div className="card-soft rounded-2xl p-5">
                         <div className="flex items-center gap-2 mb-4">
                             <AlertTriangle className="w-5 h-5 text-yellow-400" />
                             <h3 className="text-lg font-semibold">Upcoming Maintenance</h3>

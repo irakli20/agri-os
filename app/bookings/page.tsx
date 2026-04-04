@@ -34,9 +34,12 @@ import { InvoiceModal } from '@/components/modals/InvoiceModal';
 import { ProviderMessageModal } from '@/components/modals/ProviderMessageModal';
 import { ProviderProfileModal, MOCK_PROVIDER } from '@/components/modals/ProviderProfileModal';
 
+import { useGameStore } from '@/lib/game-store';
+
 type TabType = 'active' | 'completed';
 
 export default function BookingsPage() {
+    const { gameMode, activeRentals } = useGameStore();
     const [activeTab, setActiveTab] = useState<TabType>('active');
     const [selectedBooking, setSelectedBooking] = useState<ServiceBooking | null>(null);
     const [reviewBooking, setReviewBooking] = useState<ServiceBooking | null>(null);
@@ -44,9 +47,34 @@ export default function BookingsPage() {
     const [messageProvider, setMessageProvider] = useState<ServiceBooking | null>(null);
     const [showProviderProfile, setShowProviderProfile] = useState(false);
 
-    const stats = getBookingStats();
-    const activeBookings = getActiveBookings();
-    const completedBookings = getCompletedBookings();
+    // Map game rentals to ServiceBooking format
+    const gameBookings: ServiceBooking[] = activeRentals.map(rental => ({
+        id: rental.id,
+        serviceId: rental.serviceId,
+        serviceName: rental.name,
+        providerName: 'AgService Contractor',
+        providerCompany: 'Precision Agriculture Ltd',
+        providerPhone: '+1-555-AGRI',
+        providerRating: 4.8,
+        fieldName: rental.fieldId || 'N/A',
+        acres: 0, // Could be added to rental if needed
+        scheduledDate: 'Game Week ' + rental.expiresAtWeek,
+        scheduledTime: 'Day Shift',
+        status: 'in_progress', // Default for active rentals
+        totalCost: 0, // Needs tracking if important
+        createdAt: new Date().toISOString(),
+        timeline: [{ status: 'in_progress', timestamp: new Date().toISOString() }]
+    }));
+
+    const stats = gameMode ? {
+        activeCount: gameBookings.length,
+        completedCount: 0,
+        totalSpent: 0,
+        pendingCost: 0
+    } : getBookingStats();
+
+    const activeBookings = gameMode ? gameBookings : getActiveBookings();
+    const completedBookings = gameMode ? [] : getCompletedBookings();
 
     const displayedBookings = activeTab === 'active' ? activeBookings : completedBookings;
 
@@ -55,25 +83,26 @@ export default function BookingsPage() {
             <div className="flex h-full">
                 {/* Main Content */}
                 <div className={cn(
-                    "flex-1 p-6 space-y-6 overflow-y-auto transition-all",
+                    "flex-1 page-shell transition-all",
                     selectedBooking ? "lg:pr-[420px]" : ""
                 )}>
                     {/* Header */}
-                    <div className="flex items-center justify-between">
+                    <div className="page-header">
                         <div>
+                            <p className="page-header-meta">Service Operations</p>
                             <h1 className="text-3xl font-bold">My Bookings</h1>
                             <p className="text-muted-foreground mt-1">
                                 Track and manage your service bookings
                             </p>
                         </div>
-                        <Link href="/services" className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
+                        <Link href="/services" className="cta-primary inline-flex items-center justify-center">
                             Book New Service
                         </Link>
                     </div>
 
                     {/* Stats Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div className="glass-panel rounded-xl p-4">
+                    <div className="page-kpi-grid">
+                        <div className="kpi-card">
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
                                     <Clock className="w-5 h-5 text-blue-400" />
@@ -84,7 +113,7 @@ export default function BookingsPage() {
                                 </div>
                             </div>
                         </div>
-                        <div className="glass-panel rounded-xl p-4">
+                        <div className="kpi-card">
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
                                     <CheckCircle className="w-5 h-5 text-green-400" />
@@ -95,10 +124,10 @@ export default function BookingsPage() {
                                 </div>
                             </div>
                         </div>
-                        <div className="glass-panel rounded-xl p-4">
+                        <div className="kpi-card">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
-                                    <DollarSign className="w-5 h-5 text-emerald-400" />
+                                <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
+                                    <DollarSign className="w-5 h-5 text-primary" />
                                 </div>
                                 <div>
                                     <div className="text-2xl font-bold">${stats.totalSpent.toLocaleString()}</div>
@@ -106,7 +135,7 @@ export default function BookingsPage() {
                                 </div>
                             </div>
                         </div>
-                        <div className="glass-panel rounded-xl p-4">
+                        <div className="kpi-card">
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-lg bg-yellow-500/20 flex items-center justify-center">
                                     <AlertCircle className="w-5 h-5 text-yellow-400" />
@@ -120,14 +149,14 @@ export default function BookingsPage() {
                     </div>
 
                     {/* Tabs */}
-                    <div className="flex gap-2">
+                    <div className="segment-wrap">
                         <button
                             onClick={() => setActiveTab('active')}
                             className={cn(
-                                "px-4 py-2 rounded-lg font-medium transition-colors",
+                                "segment-pill",
                                 activeTab === 'active'
-                                    ? "bg-primary text-primary-foreground"
-                                    : "bg-white/5 hover:bg-white/10"
+                                    ? "segment-pill-active"
+                                    : ""
                             )}
                         >
                             Active ({activeBookings.length})
@@ -135,10 +164,10 @@ export default function BookingsPage() {
                         <button
                             onClick={() => setActiveTab('completed')}
                             className={cn(
-                                "px-4 py-2 rounded-lg font-medium transition-colors",
+                                "segment-pill",
                                 activeTab === 'completed'
-                                    ? "bg-primary text-primary-foreground"
-                                    : "bg-white/5 hover:bg-white/10"
+                                    ? "segment-pill-active"
+                                    : ""
                             )}
                         >
                             Completed ({completedBookings.length})
@@ -148,7 +177,7 @@ export default function BookingsPage() {
                     {/* Bookings List */}
                     <div className="space-y-4">
                         {displayedBookings.length === 0 ? (
-                            <div className="glass-panel rounded-xl p-12 text-center">
+                            <div className="card-soft rounded-2xl p-12 text-center">
                                 <History className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                                 <h3 className="text-lg font-medium mb-2">No bookings yet</h3>
                                 <p className="text-muted-foreground mb-4">
@@ -156,7 +185,7 @@ export default function BookingsPage() {
                                         ? "You don't have any active bookings"
                                         : "You don't have any completed bookings"}
                                 </p>
-                                <Link href="/services" className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
+                                <Link href="/services" className="cta-primary inline-flex items-center justify-center">
                                     Browse Services
                                 </Link>
                             </div>
@@ -170,7 +199,7 @@ export default function BookingsPage() {
                                         key={booking.id}
                                         onClick={() => setSelectedBooking(booking)}
                                         className={cn(
-                                            "glass-panel rounded-xl p-5 hover:bg-white/10 transition-all cursor-pointer group",
+                                            "card-soft rounded-2xl p-5 hover:bg-white/10 transition-all cursor-pointer group elevate-card",
                                             selectedBooking?.id === booking.id && "ring-2 ring-primary",
                                             isActive && "border-l-4 border-l-green-400"
                                         )}

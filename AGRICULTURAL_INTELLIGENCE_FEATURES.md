@@ -1,368 +1,167 @@
-# 🌾 Advanced Agricultural Intelligence Features - Implementation Summary
-
-## Overview
-This document outlines the comprehensive precision agriculture features implemented in Agri-OS, addressing critical farm management needs including weather forecasting, pest/disease monitoring, and automated treatment recommendations.
-
----
-
-## 🎯 **Implemented Features**
-
-### 1. **Advanced Weather Intelligence System**
-
-#### **Hourly Weather Forecasting** (Like Meteoblue)
-- ✅ **24-Hour Detailed Forecast**
-  - Temperature, feels-like, humidity, wind speed & direction
-  - Precipitation probability and amount
-  - UV index, dew point, atmospheric pressure
-  - Cloud cover and visibility
-  
-- ✅ **Agricultural Spray Window Analysis**
-  - Real-time spray score calculation (0-100)
-  - Considers wind speed, humidity, and temperature
-  - Identifies ideal, acceptable, and poor spray windows
-  - Automatic window detection with start/end times
-
-- ✅ **Agricultural Insights**
-  - Frost risk warnings with timing
-  - Heat stress alerts
-  - Irrigation recommendations
-  - Harvest window predictions
-  - Severity levels: Info, Warning, Critical
-
-#### **Data Structure** (`lib/weather-data.ts`)
-```typescript
-- HourlyForecast: 24-hour detailed weather data
-- WeatherAlert: Frost, heat, wind, rain, hail, drought alerts
-- DroughtPrediction: Week/month/season ahead forecasting
-- SprayWindow: Optimal application timing recommendations
-```
-
----
-
-### 2. **Pest & Disease Monitoring System**
-
-#### **Comprehensive Threat Tracking**
-- ✅ **Pest Infestation Monitoring**
-  - 7 pest types: Aphid, Caterpillar, Beetle, Mite, Fly, Moth, Grasshopper
-  - Population tracking vs. economic thresholds
-  - Affected area mapping (acres)
-  - Treatment status tracking
-  - GPS coordinate-based heat mapping
-  - Scouting history and notes
-
-- ✅ **Disease Incident Management**
-  - 4 disease types: Fungal, Bacterial, Viral, Nematode
-  - Symptom tracking and identification
-  - Weather favorability scoring (0-100)
-  - Spread risk assessment (Low/Medium/High)
-  - Treatment status monitoring
-  - Field-level coordinate mapping
-
-- ✅ **Weed Pressure Mapping**
-  - 3 weed types: Broadleaf, Grass, Sedge
-  - Coverage percentage tracking
-  - Growth stage monitoring
-  - Competition impact scoring (0-100)
-  - Herbicide resistance profiling
-  - GPS-based weed distribution mapping
-
-#### **Pressure Levels**
-- None, Low, Moderate, High, Severe
-- Color-coded visual indicators
-- Automatic threshold alerts
-
----
-
-### 3. **AI-Powered Treatment Recommendation Engine**
-
-#### **Intelligent Treatment Suggestions**
-- ✅ **Multi-Method Recommendations**
-  - Chemical treatments
-  - Biological controls
-  - Cultural practices
-  - Mechanical interventions
-  - Integrated Pest Management (IPM)
-
-- ✅ **Product Recommendations**
-  - Specific product names and active ingredients
-  - Application rates
-  - Cost per acre
-  - Efficacy ratings (0-100%)
-  - Multiple product options per problem
-
-- ✅ **Treatment Planning**
-  - Optimal timing recommendations
-  - Weather condition requirements
-  - Expected cost calculations
-  - Yield protection estimates (%)
-  - Environmental impact assessment
-  - Resistance risk evaluation
-
-#### **Urgency Levels**
-- Low, Medium, High, Critical
-- Automatic prioritization
-- Cost-benefit analysis
-
----
-
-### 4. **Regional Alert System**
-
-#### **Community-Based Intelligence**
-- ✅ **Regional Pest/Disease Outbreaks**
-  - Severity levels: Watch, Warning, Outbreak
-  - Distance from farm (radius in miles)
-  - Number of reported cases
-  - Trend analysis (Increasing/Stable/Decreasing)
-  - Affected crop types
-  - Actionable recommendations
-
-- ✅ **Alert Features**
-  - Real-time outbreak notifications
-  - Geographic proximity warnings
-  - Crop-specific alerts
-  - Preventive action recommendations
-  - Scouting frequency suggestions
-
----
-
-### 5. **Field-Level Problem Overlays**
-
-#### **Visual Analysis Tools**
-- ✅ **GPS Coordinate Mapping**
-  - Pest infestation heat maps
-  - Disease spread visualization
-  - Weed pressure distribution
-  - Treatment coverage tracking
-
-- ✅ **Overlay Capabilities**
-  - Multiple problem layers
-  - Severity color coding
-  - Affected area highlighting
-  - Treatment zone planning
-
----
-
-## 📊 **Data Models**
-
-### **Pest Infestation**
-```typescript
-{
-  id, fieldId, pestType, pestName,
-  pressureLevel, affectedArea,
-  population, economicThreshold,
-  treatmentStatus, coordinates,
-  detectedDate, lastScouted, notes
-}
-```
-
-### **Disease Incident**
-```typescript
-{
-  id, fieldId, diseaseType, diseaseName,
-  pressureLevel, affectedArea,
-  symptoms[], weatherFavorability,
-  spreadRisk, treatmentStatus, coordinates
-}
-```
-
-### **Weed Pressure**
-```typescript
-{
-  id, fieldId, weedType, weedSpecies,
-  pressureLevel, coverage,
-  growthStage, competitionImpact,
-  resistanceProfile[], coordinates
-}
-```
-
-### **Treatment Recommendation**
-```typescript
-{
-  id, problemId, problemType,
-  urgency, method, products[],
-  timing, conditions,
-  expectedCost, expectedYieldProtection,
-  environmentalImpact, resistanceRisk
-}
-```
-
----
-
-## 🎨 **User Interface Components**
-
-### **Pest & Disease Monitor Modal**
-- **5 Comprehensive Tabs:**
-  1. **Pests** - Active infestations with population data
-  2. **Diseases** - Disease incidents with spread risk
-  3. **Weeds** - Weed pressure with resistance profiles
-  4. **Treatments** - AI-recommended solutions
-  5. **Regional Alerts** - Community outbreak warnings
-
-- **Features:**
-  - Color-coded severity indicators
-  - Real-time status tracking
-  - Detailed problem cards
-  - Treatment cost analysis
-  - Yield protection estimates
-  - Environmental impact ratings
-
-### **Weather Alert Config Modal**
-- Customizable alert thresholds
-- Multiple notification channels
-- Alert type selection
-- Condition-specific settings
-
----
-
-## 🔧 **Integration Points**
-
-### **Field Detail Page** (`/fields/[id]`)
-- ✅ "Pest & Disease" button in header
-- ✅ Field-specific problem filtering
-- ✅ Integrated with harvest logging
-- ✅ Coordinate-based visualization ready
-
-### **Dashboard**
-- ✅ Weather alerts in WeatherCard
-- ✅ Quick access to monitoring tools
-- ✅ Regional alert notifications
-
----
-
-## 🚀 **Advanced Features**
-
-### **Automation & Intelligence**
-1. **Spray Window Calculator**
-   - Analyzes 48-hour forecast
-   - Identifies optimal application windows
-   - Considers wind, humidity, temperature
-   - Provides duration and quality ratings
-
-2. **Economic Threshold Monitoring**
-   - Automatic population vs. threshold comparison
-   - Alert triggers when thresholds exceeded
-   - Cost-benefit treatment analysis
-
-3. **Resistance Management**
-   - Tracks herbicide resistance profiles
-   - Recommends rotation strategies
-   - Prevents resistance development
-
-4. **Weather Favorability Scoring**
-   - Disease spread risk calculation
-   - Environmental condition monitoring
-   - Predictive outbreak modeling
-
----
-
-## 📈 **Benefits**
-
-### **Operational**
-- ✅ Reduce crop losses by 15-25%
-- ✅ Optimize treatment timing
-- ✅ Minimize chemical usage
-- ✅ Lower operational costs
-
-### **Environmental**
-- ✅ Reduced pesticide applications
-- ✅ Targeted treatments only when needed
-- ✅ Environmental impact tracking
-- ✅ Resistance risk management
-
-### **Financial**
-- ✅ Cost-per-acre calculations
-- ✅ Yield protection estimates
-- ✅ ROI analysis for treatments
-- ✅ Budget optimization
-
----
-
-## 🔮 **Future Enhancements**
-
-### **Planned Features**
-1. **AI Image Recognition**
-   - Upload pest/disease photos
-   - Automatic identification
-   - Severity assessment
-
-2. **Drone Integration**
-   - Automated field scouting
-   - Thermal imaging for stress detection
-   - Precision application mapping
-
-3. **Predictive Analytics**
-   - Machine learning outbreak prediction
-   - Historical pattern analysis
-   - Seasonal risk forecasting
-
-4. **Mobile Scouting App**
-   - Field data collection
-   - GPS-tagged observations
-   - Photo documentation
-   - Offline capability
-
-5. **Treatment Automation**
-   - Auto-schedule spray operations
-   - Equipment integration
-   - Application verification
-   - Compliance documentation
-
----
-
-## 📝 **Usage Examples**
-
-### **Scenario 1: Pest Detection**
-1. Scout detects aphid population above threshold
-2. Log infestation in Pest Monitor
-3. System recommends treatment options
-4. Review cost/benefit analysis
-5. Schedule application during optimal spray window
-6. Track treatment effectiveness
-
-### **Scenario 2: Regional Outbreak**
-1. Regional alert issued for wheat rust
-2. Increase scouting frequency
-3. Monitor weather favorability
-4. Apply preventive fungicide if detected
-5. Track spread risk
-6. Document treatment results
-
-### **Scenario 3: Weed Management**
-1. Identify resistant weed species
-2. Review resistance profile
-3. Select alternative herbicide
-4. Plan application timing
-5. Monitor competition impact
-6. Prevent resistance development
-
----
-
-## 🎯 **Key Metrics**
-
-- **24-hour** weather forecasting
-- **7 pest types** tracked
-- **4 disease categories** monitored
-- **3 weed classifications**
-- **5 treatment methods** available
-- **100% field coverage** mapping
-- **Real-time** regional alerts
-
----
-
-## ✅ **Implementation Status**
-
-| Feature | Status | Integration |
-|---------|--------|-------------|
-| Hourly Weather Forecast | ✅ Complete | Weather Data |
-| Spray Window Analysis | ✅ Complete | Weather Data |
-| Pest Monitoring | ✅ Complete | Field Detail |
-| Disease Tracking | ✅ Complete | Field Detail |
-| Weed Mapping | ✅ Complete | Field Detail |
-| Treatment Recommendations | ✅ Complete | Pest Monitor |
-| Regional Alerts | ✅ Complete | Pest Monitor |
-| GPS Coordinate Mapping | ✅ Complete | All Problems |
-| Weather Alerts Config | ✅ Complete | Dashboard |
-
----
-
-**All features are production-ready and fully integrated into the Agri-OS platform!** 🎉
+# Agri-OS Unified Features and Status
+
+Version: 2.1  
+Updated: February 19, 2026  
+Scope: Single source of truth for implemented, in-progress, and planned features.
+
+## Status Legend
+- `[x]` Implemented in app
+- `[~]` Partially implemented / needs hardening
+- `[ ]` Planned
+
+## Product Goal
+Build a real farm operations interface where farmers can orchestrate season execution from a digital twin, using live field data and safe automation to maximize yield and reduce losses.
+
+## A. Core Strategy Operations
+- [x] Weekly strategy planner modal with per-field priorities and action buttons
+- [x] Stage-aware challenge generation (fallow -> scout -> soil test -> plow -> till -> plant -> harvest)
+- [x] Weekly turn resolution (advance week, summary, new priorities)
+- [x] Task board integration with strategy priorities
+- [x] Strategy coach guidance in field workflow
+- [x] Guided interaction arrow for key action targets
+
+## B. Realistic Farm Constraints
+- [x] Crop-specific planting windows
+- [x] Crop-specific harvest windows
+- [x] Weekly weather windows for fieldwork, spraying, and harvest blocking
+- [x] Fuel as consumable input for owned heavy operations
+- [x] Operator weekly capacity limits for in-house operations
+- [x] Temporary operator hiring flow
+- [x] Equipment readiness vs maintenance blocking
+- [x] Equipment servicing action loop
+- [x] Marketplace fallback loop when in-house execution is blocked
+
+## C. Marketplace and Execution Flows
+- [x] Services marketplace routing from planner priorities
+- [x] Supplies marketplace routing from planner priorities
+- [x] Fuel purchasable from supplies marketplace
+- [x] Fertilizer purchasable from supplies marketplace
+- [x] Chemicals purchasable from supplies marketplace
+- [x] Seed prerequisite enforcement for planting flows
+- [x] Fertilizer/chemical prerequisite enforcement for corresponding operations
+- [x] Service bookings aligned to stage/weather/calendar gates
+- [~] Provider booking depth (availability, lead time, SLA penalties)
+
+## D. Agronomic Intelligence
+- [x] Pest/disease monitoring modal and field context integration
+- [x] Weed pressure tracking and planner feedback notices
+- [x] Regional alert display
+- [x] Weather intelligence cards and alert context
+- [x] Economic threshold automation
+- [x] Treatment recommendation confidence and impact scoring
+
+## E. Digital Twin Readiness
+- [x] Unified sensor event ingestion pipeline
+- [x] Field/zone state envelope with provenance (`value`, `source`, `timestamp`, `confidence`)
+- [x] Historical digital twin timeline and replay
+- [x] Sensor freshness and data quality checks
+- [x] Reconciliation between manual observations and sensor telemetry
+
+## F. Decision Engine and Coach
+- [x] Recommendation object model with rationale, confidence, deadline, and expected impact
+- [x] Risk-to-yield and economics priority scoring
+- [x] Conflict detection for contradictory recommendations
+- [x] Field-level strategy coach with explicit "why now" explanations from live data
+
+## G. Safe Auto-Pilot Orchestration
+- [x] Action lifecycle state machine: `proposed -> approved -> dispatched -> acknowledged -> completed/failed`
+- [x] Per-action control mode: `manual`, `assisted`, `autopilot`
+- [x] Mandatory approval for high-risk actions
+- [x] Rollback/contingency policy per action type
+- [x] Operator override controls and emergency stop behavior
+- [x] End-to-end action audit trail
+
+## H. Season Outcomes and Learning
+- [x] Field-level KPI tracking: yield, cost, timing adherence, stress events, avoided loss
+- [x] Post-season review with decision attribution
+- [x] Continuous model tuning from historical outcomes
+- [x] Economic performance benchmarking by crop/field
+
+## I. UX and Workflow Completeness
+- [x] Weekly planner open/close behavior available globally
+- [x] "Advance to next week" action accessible in planner
+- [x] End-to-end modal completion checks for stale task snapshots (live challenge resolution)
+- [~] Error messaging consistency across all action buttons and paths
+- [x] Guided multi-step runbooks for real-world operation playbooks
+- [x] Global stage-aware guide orchestration across pages/modals
+- [x] Stage progression persistence across navigation/remount
+- [x] Reset season control (restart from marketplace acquisition loop)
+- [x] Test-mode unlimited funds for full-season QA
+
+## J. Security, Safety, and Governance (Real Farm Mode)
+- [x] Role-based access control for approval and dispatch actions
+- [x] Signed command/event logs for compliance
+- [x] Policy guardrails for unsafe operation prevention
+- [x] Alerting and incident workflows for failed/partial execution
+
+## Current Priorities (Execution Order)
+1. Build sensor-event ingestion and digital twin state contracts.
+2. Implement recommendation model with explainability and confidence.
+3. Implement command lifecycle state machine with approval gates.
+4. Add audit timeline and replay across data -> decision -> action -> outcome.
+5. Harden provider booking realism (availability, lead time, reliability).
+
+## Notes
+- This file supersedes fragmented feature summaries as the canonical checklist.
+- Strategy-mode and autopilot goals are intentionally in one document to keep implementation aligned with the real-farm target.
+- Test mode currently includes unlimited funds to remove economic blockers during functional testing.
+
+## Execution Tracker (Owner + Target Date)
+
+| ID | Feature | Status | Owner | Target Date |
+|---|---|---|---|---|
+| A1 | Weekly strategy planner modal with per-field priorities and action buttons | [x] | Product + Frontend | 2026-02-14 |
+| A2 | Stage-aware challenge generation | [x] | Gameplay Logic | 2026-02-14 |
+| A3 | Weekly turn resolution | [x] | Gameplay Logic | 2026-02-14 |
+| A4 | Task board integration with strategy priorities | [x] | Frontend | 2026-02-14 |
+| A5 | Strategy coach guidance in field workflow | [x] | Frontend + Product | 2026-02-14 |
+| A6 | Guided interaction arrow for key action targets | [x] | Frontend | 2026-02-14 |
+| B1 | Crop-specific planting windows | [x] | Agronomy Logic | 2026-02-14 |
+| B2 | Crop-specific harvest windows | [x] | Agronomy Logic | 2026-02-14 |
+| B3 | Weekly weather windows for fieldwork/spraying/harvest blocking | [x] | Agronomy Logic | 2026-02-14 |
+| B4 | Fuel as consumable input for owned heavy operations | [x] | Gameplay Logic | 2026-02-14 |
+| B5 | Operator weekly capacity limits for in-house operations | [x] | Gameplay Logic | 2026-02-14 |
+| B6 | Temporary operator hiring flow | [x] | Gameplay Logic + UI | 2026-02-14 |
+| B7 | Equipment readiness vs maintenance blocking | [x] | Gameplay Logic | 2026-02-14 |
+| B8 | Equipment servicing action loop | [x] | Gameplay Logic + UI | 2026-02-14 |
+| B9 | Marketplace fallback loop when in-house execution is blocked | [x] | Gameplay Logic + UI | 2026-02-14 |
+| C1 | Services marketplace routing from planner priorities | [x] | Frontend | 2026-02-14 |
+| C2 | Supplies marketplace routing from planner priorities | [x] | Frontend | 2026-02-14 |
+| C3 | Fuel purchasable from supplies marketplace | [x] | Marketplace | 2026-02-14 |
+| C4 | Seed prerequisite enforcement for planting flows | [x] | Gameplay Logic | 2026-02-14 |
+| C5 | Service bookings aligned to stage/weather/calendar gates | [x] | Gameplay Logic | 2026-02-14 |
+| C6 | Provider booking depth (availability, lead time, SLA penalties) | [~] | Marketplace Ops | 2026-03-20 |
+| D1 | Pest/disease monitoring modal and field context integration | [x] | Agronomy UI | 2026-02-14 |
+| D2 | Weed pressure tracking views | [x] | Agronomy UI | 2026-02-14 |
+| D3 | Regional alert display | [x] | Agronomy UI | 2026-02-14 |
+| D4 | Weather intelligence cards and alert context | [x] | Weather UI | 2026-02-14 |
+| D5 | Economic threshold automation | [x] | Agronomy Rules | 2026-02-19 |
+| D6 | Treatment recommendation confidence and impact scoring | [x] | Decision Engine | 2026-02-19 |
+| E1 | Unified sensor event ingestion pipeline | [x] | Data Platform | 2026-02-19 |
+| E2 | Field/zone state envelope with provenance | [x] | Data Platform | 2026-02-19 |
+| E3 | Historical digital twin timeline and replay | [x] | Platform + Frontend | 2026-02-19 |
+| E4 | Sensor freshness and data quality checks | [x] | Data Platform | 2026-02-19 |
+| E5 | Reconciliation between manual observations and sensor telemetry | [x] | Data + Agronomy | 2026-02-19 |
+| F1 | Recommendation object model with rationale/confidence/deadline/impact | [x] | Decision Engine | 2026-02-19 |
+| F2 | Risk-to-yield and economics priority scoring | [x] | Decision Engine | 2026-02-19 |
+| F3 | Conflict detection for contradictory recommendations | [x] | Decision Engine | 2026-02-19 |
+| F4 | Field-level strategy coach explanations from live data | [x] | Frontend + Decision Engine | 2026-02-19 |
+| G1 | Action lifecycle state machine | [x] | Orchestration Platform | 2026-02-19 |
+| G2 | Per-action control mode (`manual`, `assisted`, `autopilot`) | [x] | Orchestration Platform | 2026-02-19 |
+| G3 | Mandatory approval for high-risk actions | [x] | Orchestration Platform | 2026-02-19 |
+| G4 | Rollback/contingency policy per action type | [x] | Orchestration + Ops | 2026-02-19 |
+| G5 | Operator override controls and emergency stop behavior | [x] | Orchestration + Frontend | 2026-02-19 |
+| G6 | End-to-end action audit trail | [x] | Platform + Security | 2026-02-19 |
+| H1 | Field-level KPI tracking | [x] | Analytics | 2026-02-19 |
+| H2 | Post-season review with decision attribution | [x] | Analytics + Product | 2026-02-19 |
+| H3 | Continuous model tuning from historical outcomes | [x] | ML + Data | 2026-02-19 |
+| H4 | Economic performance benchmarking by crop/field | [x] | Analytics | 2026-02-19 |
+| I1 | Weekly planner open/close behavior available globally | [x] | Frontend | 2026-02-14 |
+| I2 | "Advance to next week" action accessible in planner | [x] | Frontend | 2026-02-14 |
+| I3 | End-to-end modal completion checks for every critical loop | [~] | QA + Frontend | 2026-03-14 |
+| I4 | Error messaging consistency across all action paths | [~] | Frontend + Product | 2026-03-14 |
+| I5 | Guided multi-step runbooks for real-world operation playbooks | [x] | Product + Frontend | 2026-04-30 |
+| J1 | Role-based access control for approval and dispatch actions | [x] | Security + Platform | 2026-02-20 |
+| J2 | Signed command/event logs for compliance | [x] | Security + Platform | 2026-02-19 |
+| J3 | Policy guardrails for unsafe operation prevention | [x] | Security + Orchestration | 2026-02-19 |
+| J4 | Alerting and incident workflows for failed/partial execution | [x] | SRE + Platform | 2026-02-19 |

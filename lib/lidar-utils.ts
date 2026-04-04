@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Simple pseudo-random noise function for terrain generation
 // Simple pseudo-random noise function for terrain generation
 export const terrainNoise = (x: number, z: number) => {

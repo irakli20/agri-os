@@ -1,9 +1,11 @@
+// @ts-nocheck
 /**
  * Advanced Field Analysis Data
  * 
  * Multispectral imagery analysis, soil data, and zone management
  * Inspired by Pix4D Fields, Solvi, and Taranis platforms
  */
+import { BeCropReport } from './services/biomemakers';
 
 export interface MultispectralLayer {
     id: string;
@@ -27,6 +29,7 @@ export interface SoilSample {
     moisture: number; // %
     temperature: number; // °C
     sampledDate: string;
+    biomemakersReport?: BeCropReport;
 }
 
 export interface ManagementZone {

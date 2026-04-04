@@ -26,20 +26,27 @@ import { cn } from '@/lib/utils';
 import { ProcurementOrderModal } from '@/components/modals/ProcurementOrderModal';
 import { AddSupplierModal } from '@/components/modals/AddSupplierModal';
 
+import { useGameStore } from '@/lib/game-store';
+
 export default function ProcurementPage() {
+    const { gameMode } = useGameStore();
     const [searchQuery, setSearchQuery] = useState('');
     const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
     const [isAddSupplierOpen, setIsAddSupplierOpen] = useState(false);
 
+    // Choosedata based on game mode
+    const dealsSource = gameMode ? [] : ACTIVE_DEALS;
+
     // Calculate potential savings
-    const totalPotentialSavings = ACTIVE_DEALS.reduce((sum, deal) => sum + (deal.savings * 100), 0); // Mock volume
+    const totalPotentialSavings = dealsSource.reduce((sum, deal) => sum + (deal.savings * 100), 0);
 
     return (
         <AppShell>
-            <div className="p-6 space-y-6 overflow-y-auto h-full">
+            <div className="page-shell">
                 {/* Header */}
-                <div className="flex items-center justify-between">
+                <div className="page-header">
                     <div>
+                        <p className="page-header-meta">Vendor Intelligence</p>
                         <h1 className="text-3xl font-bold">Procurement & Sourcing</h1>
                         <p className="text-muted-foreground mt-1">
                             AI-powered price scouting and automated purchasing
@@ -48,17 +55,17 @@ export default function ProcurementPage() {
                     <div className="flex gap-2">
                         <button
                             onClick={() => setIsAddSupplierOpen(true)}
-                            className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors flex items-center gap-2"
+                            className="cta-secondary flex items-center gap-2"
                         >
                             <Package className="w-4 h-4" />
                             Add Supplier
                         </button>
-                        <button className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors">
+                        <button className="cta-secondary">
                             Order History
                         </button>
                         <button
                             onClick={() => setIsOrderModalOpen(true)}
-                            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2"
+                            className="cta-primary flex items-center gap-2"
                         >
                             <ShoppingBag className="w-4 h-4" />
                             Create Order
@@ -67,36 +74,36 @@ export default function ProcurementPage() {
                 </div>
 
                 {/* Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="glass-panel rounded-xl p-4">
+                <div className="page-kpi-grid">
+                    <div className="kpi-card">
                         <div className="text-sm text-muted-foreground mb-1">Active Deals</div>
-                        <div className="text-2xl font-bold">{ACTIVE_DEALS.length}</div>
+                        <div className="text-2xl font-bold">{dealsSource.length}</div>
                         <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                            <TrendingDown className="w-3 h-3 text-green-400" />
-                            <span>Avg 18% savings</span>
+                            {dealsSource.length > 0 && <TrendingDown className="w-3 h-3 text-green-400" />}
+                            <span>{gameMode ? "No deals found" : "Avg 18% savings"}</span>
                         </div>
                     </div>
-                    <div className="glass-panel rounded-xl p-4">
+                    <div className="kpi-card">
                         <div className="text-sm text-muted-foreground mb-1">Potential Savings</div>
                         <div className="text-2xl font-bold text-green-400">
                             ${totalPotentialSavings.toLocaleString()}
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
-                            If acted on today
+                            {gameMode ? "Start scouting for deals" : "If acted on today"}
                         </div>
                     </div>
-                    <div className="glass-panel rounded-xl p-4">
+                    <div className="kpi-card">
                         <div className="text-sm text-muted-foreground mb-1">Active Suppliers</div>
-                        <div className="text-2xl font-bold text-blue-400">{SUPPLIERS.length}</div>
+                        <div className="text-2xl font-bold text-blue-400">{gameMode ? 0 : SUPPLIERS.length}</div>
                         <div className="text-xs text-muted-foreground mt-1">
-                            96% reliability score
+                            {gameMode ? "None partnered yet" : "96% reliability score"}
                         </div>
                     </div>
-                    <div className="glass-panel rounded-xl p-4">
+                    <div className="kpi-card">
                         <div className="text-sm text-muted-foreground mb-1">Pending Orders</div>
-                        <div className="text-2xl font-bold text-yellow-400">3</div>
+                        <div className="text-2xl font-bold text-yellow-400">{gameMode ? 0 : 3}</div>
                         <div className="text-xs text-muted-foreground mt-1">
-                            Arriving this week
+                            {gameMode ? "No active orders" : "Arriving this week"}
                         </div>
                     </div>
                 </div>
@@ -105,61 +112,69 @@ export default function ProcurementPage() {
                     {/* Main Content: Price Scouting */}
                     <div className="lg:col-span-2 space-y-6">
                         {/* Deal Finder */}
-                        <div className="glass-panel rounded-xl p-5">
+                        <div className="card-soft rounded-2xl p-5">
                             <div className="flex items-center gap-2 mb-4">
                                 <DollarSign className="w-5 h-5 text-green-400" />
                                 <h3 className="text-lg font-semibold">Smart Deal Finder</h3>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {ACTIVE_DEALS.map((deal) => (
-                                    <div key={deal.id} className="bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-colors cursor-pointer border border-white/5 hover:border-primary/50 group">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <div className="flex items-center gap-2">
-                                                <span className={cn(
-                                                    "px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider",
-                                                    deal.type === 'flash_sale' ? "bg-red-500/20 text-red-400" :
-                                                        deal.type === 'clearance' ? "bg-yellow-500/20 text-yellow-400" :
-                                                            "bg-blue-500/20 text-blue-400"
-                                                )}>
-                                                    {deal.type.replace('_', ' ')}
-                                                </span>
-                                                {deal.urgency === 'high' && (
-                                                    <span className="flex items-center gap-1 text-xs text-red-400 animate-pulse">
-                                                        <Clock className="w-3 h-3" /> Expires Soon
+                            {dealsSource.length === 0 ? (
+                                <div className="p-8 text-center text-muted-foreground bg-white/5 rounded-lg border border-dashed border-white/10">
+                                    <ShoppingBag className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                                    <p>No active deals found scanning the marketplace.</p>
+                                    <p className="text-xs mt-1">Performance will improve as you grow your network.</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {dealsSource.map((deal) => (
+                                        <div key={deal.id} className="bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-colors cursor-pointer border border-white/5 hover:border-primary/50 group">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span className={cn(
+                                                        "px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider",
+                                                        deal.type === 'flash_sale' ? "bg-red-500/20 text-red-400" :
+                                                            deal.type === 'clearance' ? "bg-yellow-500/20 text-yellow-400" :
+                                                                "bg-blue-500/20 text-blue-400"
+                                                    )}>
+                                                        {deal.type.replace('_', ' ')}
                                                     </span>
-                                                )}
-                                            </div>
-                                            <div className="text-green-400 font-bold">
-                                                {deal.savingsPercent}% OFF
-                                            </div>
-                                        </div>
-
-                                        <h4 className="font-medium mb-1">{deal.productName}</h4>
-                                        <div className="text-sm text-muted-foreground mb-3">
-                                            Sold by {deal.supplierName}
-                                        </div>
-
-                                        <div className="flex items-end justify-between">
-                                            <div>
-                                                <div className="text-xs text-muted-foreground line-through">
-                                                    ${deal.normalPrice.toFixed(2)}
+                                                    {deal.urgency === 'high' && (
+                                                        <span className="flex items-center gap-1 text-xs text-red-400 animate-pulse">
+                                                            <Clock className="w-3 h-3" /> Expires Soon
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                <div className="text-xl font-bold text-white">
-                                                    ${deal.dealPrice.toFixed(2)}
+                                                <div className="text-green-400 font-bold">
+                                                    {deal.savingsPercent}% OFF
                                                 </div>
                                             </div>
-                                            <button className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded hover:bg-primary/90 transition-colors opacity-0 group-hover:opacity-100">
-                                                View Deal
-                                            </button>
+
+                                            <h4 className="font-medium mb-1">{deal.productName}</h4>
+                                            <div className="text-sm text-muted-foreground mb-3">
+                                                Sold by {deal.supplierName}
+                                            </div>
+
+                                            <div className="flex items-end justify-between">
+                                                <div>
+                                                    <div className="text-xs text-muted-foreground line-through">
+                                                        ${deal.normalPrice.toFixed(2)}
+                                                    </div>
+                                                    <div className="text-xl font-bold text-white">
+                                                        ${deal.dealPrice.toFixed(2)}
+                                                    </div>
+                                                </div>
+                                                <button className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded hover:bg-primary/90 transition-colors opacity-0 group-hover:opacity-100">
+                                                    View Deal
+                                                </button>
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
-                            </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         {/* Price Comparison Tool */}
-                        <div className="glass-panel rounded-xl p-5">
+                        <div className="card-soft rounded-2xl p-5">
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-2">
                                     <Search className="w-5 h-5 text-blue-400" />
@@ -243,7 +258,7 @@ export default function ProcurementPage() {
                                 <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg">
                                     <div className="text-sm font-medium text-purple-300 mb-1">Bulk Buy Opportunity</div>
                                     <p className="text-xs text-muted-foreground mb-2">
-                                        Usage analysis suggests you'll need 120 gal of Glyphosate next month. Buying now in bulk saves $450.
+                                        Usage analysis suggests you&apos;ll need 120 gal of Glyphosate next month. Buying now in bulk saves $450.
                                     </p>
                                     <button className="w-full py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-xs rounded transition-colors">
                                         Review Order

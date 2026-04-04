@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { CloudRain, Wind, Droplets, Sun, Cloud, CloudDrizzle, Settings, Clock, Sprout, ArrowRight, Calendar, CloudSun } from 'lucide-react';
+import { CloudRain, Wind, Droplets, Sun, Cloud, CloudDrizzle, Settings, Clock, Sprout, ArrowRight, Calendar, CloudSun, Brain } from 'lucide-react';
+import { PredictiveAnalyticsModal } from '@/components/modals/PredictiveAnalyticsModal';
 import { Widget } from '@/components/dashboard/DashboardGrid';
 import { WEATHER } from '@/lib/mock-data';
 import { generateHourlyForecast, getSprayWindows } from '@/lib/weather-data';
@@ -11,6 +12,7 @@ import { cn } from '@/lib/utils';
 
 export function WeatherCard() {
     const [isAlertConfigOpen, setIsAlertConfigOpen] = useState(false);
+    const [isPredictiveOpen, setIsPredictiveOpen] = useState(false);
     const hourlyForecast = generateHourlyForecast();
     const sprayWindows = getSprayWindows(hourlyForecast);
 
@@ -44,12 +46,21 @@ export function WeatherCard() {
                 title="Weather Intelligence"
                 icon={CloudSun}
                 action={
-                    <button
-                        onClick={() => setIsAlertConfigOpen(true)}
-                        className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-muted-foreground hover:text-foreground"
-                    >
-                        <Settings className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => setIsPredictiveOpen(true)}
+                            className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-muted-foreground hover:text-foreground"
+                            title="Predictive Analytics"
+                        >
+                            <Brain className="w-4 h-4" />
+                        </button>
+                        <button
+                            onClick={() => setIsAlertConfigOpen(true)}
+                            className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-muted-foreground hover:text-foreground"
+                        >
+                            <Settings className="w-4 h-4" />
+                        </button>
+                    </div>
                 }
             >
                 <div className="group hover:-translate-y-1 transition-all duration-300 hover:shadow-lg hover:shadow-blue-500/10 rounded-xl p-1 -m-1">
@@ -113,7 +124,7 @@ export function WeatherCard() {
                                             "w-1.5 h-1.5 rounded-full",
                                             nextSprayWindow.score >= 90 ? 'bg-green-400' : 'bg-blue-400'
                                         )} />
-                                        <span className="text-[10px]">{nextSprayWindow.recommendation}</span>
+                                        <span className="text-[10px]">{nextSprayWindow.reason}</span>
                                     </div>
                                 </div>
                             </div>
@@ -134,25 +145,25 @@ export function WeatherCard() {
                                     <span className="text-[10px] text-muted-foreground">
                                         {new Date(hour.time).toLocaleTimeString([], { hour: 'numeric' })}
                                     </span>
-                                    <span className="text-[10px] font-medium">{hour.temp}°</span>
+                                    <span className="text-[10px] font-medium">{hour.temperature}°</span>
                                     <div className={cn(
                                         "w-1.5 h-8 rounded-full bg-white/10 relative overflow-hidden",
                                         "after:absolute after:bottom-0 after:left-0 after:right-0 after:bg-current",
-                                        getSprayScoreColor(hour.sprayScore)
+                                        getSprayScoreColor(hour.sprayScore ?? 0)
                                     )} style={{
                                         '--tw-text-opacity': 1,
                                         color: 'currentColor'
                                     } as any}>
                                         <div
                                             className="absolute bottom-0 left-0 right-0 bg-current opacity-50"
-                                            style={{ height: `${hour.sprayScore}%` }}
+                                            style={{ height: `${hour.sprayScore ?? 0}%` }}
                                         />
                                     </div>
                                     <div className={cn(
                                         "w-1 h-1 rounded-full",
-                                        hour.sprayScore >= 80 ? 'bg-green-400' :
-                                            hour.sprayScore >= 60 ? 'bg-blue-400' :
-                                                hour.sprayScore >= 40 ? 'bg-yellow-400' :
+                                        (hour.sprayScore ?? 0) >= 80 ? 'bg-green-400' :
+                                            (hour.sprayScore ?? 0) >= 60 ? 'bg-blue-400' :
+                                                (hour.sprayScore ?? 0) >= 40 ? 'bg-yellow-400' :
                                                     'bg-red-400'
                                     )} />
                                 </div>
@@ -167,6 +178,15 @@ export function WeatherCard() {
                 onClose={() => setIsAlertConfigOpen(false)}
                 onSubmit={(config) => {
                     console.log('Weather alert config saved:', config);
+                }}
+            />
+
+            <PredictiveAnalyticsModal
+                isOpen={isPredictiveOpen}
+                onClose={() => setIsPredictiveOpen(false)}
+                onScheduleTreatment={(prediction) => {
+                    console.log('Schedule treatment for:', prediction);
+                    setIsPredictiveOpen(false);
                 }}
             />
         </>

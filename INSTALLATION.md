@@ -13,7 +13,7 @@ If not installed, download from: https://nodejs.org/
 
 ### 1. Navigate to Project Directory
 ```bash
-cd /home/iraklisheng/.gemini/antigravity/scratch/agri-os
+cd /Users/macbookpro/agri-os/agri-os
 ```
 
 ### 2. Install Dependencies
@@ -57,9 +57,17 @@ npm start
 
 After running `npm run dev`, you should see:
 - ✅ Dark mode interface
-- ✅ Full-screen map canvas with gradient background
-- ✅ Command bar placeholder at the top
-- ✅ Status indicator showing "Phase 1: The Shell"
+- ✅ Strategy Mode pages with weekly planner and guided assistant
+- ✅ Marketplace routes for fields/supplies/services/equipment
+- ✅ Field-stage workflow from scouting through harvest in planner loop
+
+## Current Test Mode Notes
+
+- Unlimited funds mode is enabled in `lib/game-store.ts` (`UNLIMITED_TEST_FUNDS = true`) for QA flow testing.
+- Use **Reset Season** in Strategy header to restart from:
+  - no owned/rented fields
+  - Year 1, Spring, Week 1
+  - fresh marketplace acquisition loop
 
 ## Next Steps
 

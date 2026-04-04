@@ -114,7 +114,7 @@ export function WeatherAlertConfigModal({ isOpen, onClose, onSubmit }: WeatherAl
                             </div>
                             <h3 className="text-lg font-semibold mb-2">Settings Saved!</h3>
                             <p className="text-muted-foreground mb-6">
-                                You'll receive alerts for {enabledAlerts.length} weather conditions via your selected channels.
+                                You&apos;ll receive alerts for {enabledAlerts.length} weather conditions via your selected channels.
                             </p>
 
                             <button

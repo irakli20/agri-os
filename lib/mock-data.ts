@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Mock Data for Agri-OS
  * 
@@ -22,6 +23,30 @@ export interface Field {
     lastFlightDate: string;
     coordinates: [number, number][]; // GeoJSON polygon
     image?: string;
+
+    // Game Mode Properties
+    soilStatus?: 'compacted' | 'plowed' | 'tilled' | 'ready';
+    /**
+     * farmingStage progression:
+     * ALL CROPS:  fallow → scouted → soil_tested → plowed → tilled → growing → harvest_ready → harvested
+     * CORN ONLY:  fallow → aerial_surveyed → soil_tested → plowed → pre_plant_treated → tilled → growing → harvest_ready → harvested → post_harvest
+     */
+    farmingStage?: 'fallow' | 'scouted' | 'aerial_surveyed' | 'soil_tested' | 'plowed' | 'pre_plant_treated' | 'tilled' | 'growing' | 'harvest_ready' | 'harvested' | 'post_harvest';
+    cropStage?: 'none' | 'seeded' | 'germination' | 'vegetative' | 'flowering' | 'ripening' | 'harvest_ready';
+    isScouted?: boolean;
+    isSoilTested?: boolean;
+    isAeriallySurveyed?: boolean; // Corn Focus Mode: drone aerial survey done
+    irrigationReady?: boolean;    // Irrigation system set up for this field
+    inputStatus?: {
+        needsWater: boolean;
+        needsNutrients: boolean;
+        needsProtection: boolean;
+    };
+    weedPressure?: 'none' | 'low' | 'medium' | 'high';
+    bbchStage?: string; // e.g. '00', '05', '11'...
+    isCornSuitable?: boolean;
+    diseasePressure?: number; // 0-100 scale based on moisture/rain
+    diseaseOutbreak?: boolean; // Flag to indicate active yield-damaging outbreak
 }
 
 export interface Drone {

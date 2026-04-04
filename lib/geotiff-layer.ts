@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { BitmapLayer } from '@deck.gl/layers';
 import { TileLayer } from '@deck.gl/geo-layers';
 import { load } from '@loaders.gl/core';

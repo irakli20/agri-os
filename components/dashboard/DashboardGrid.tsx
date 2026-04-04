@@ -17,7 +17,7 @@ interface DashboardGridProps {
 export function DashboardGrid({ children, className }: DashboardGridProps) {
     return (
         <div className={cn(
-            "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 3xl:grid-cols-6 gap-4 p-4 pointer-events-none",
+            "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 3xl:grid-cols-6 gap-4 md:gap-5 p-4 pointer-events-none",
             className
         )}>
             {children}
@@ -36,13 +36,13 @@ interface WidgetProps {
 export function Widget({ children, className, title, action, icon: Icon }: WidgetProps) {
     return (
         <div className={cn(
-            "glass-panel rounded-xl p-4 pointer-events-auto flex flex-col gap-2 animate-in fade-in zoom-in duration-300",
+            "glass-panel rounded-2xl p-4 md:p-5 pointer-events-auto flex flex-col gap-3 animate-in fade-in zoom-in duration-300 elevate-card",
             className
         )}>
             {title && (
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-1 border-b border-white/10 pb-2">
                     <div className="flex items-center gap-2">
-                        {Icon && <Icon className="w-4 h-4 text-muted-foreground" />}
+                        {Icon && <Icon className="w-4 h-4 text-primary" />}
                         <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                             {title}
                         </h3>

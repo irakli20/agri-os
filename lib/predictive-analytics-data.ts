@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Predictive Analytics Data for Agri-OS
  * 

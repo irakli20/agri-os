@@ -36,20 +36,25 @@ export default function ServicesPage() {
 
     return (
         <AppShell>
-            <div className="p-6 space-y-6 overflow-y-auto h-full">
+            <div className="p-6 space-y-6 overflow-y-auto h-full page-enter">
                 {/* Header */}
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between rounded-2xl card-soft p-5 fade-up">
                     <div>
-                        <h1 className="text-3xl font-bold">Service Marketplace</h1>
+                        <h1 className="text-3xl font-bold flex items-center gap-3">
+                            <span className="icon-chip h-10 w-10 text-primary">
+                                <Wrench className="h-5 w-5" />
+                            </span>
+                            Service Marketplace
+                        </h1>
                         <p className="text-muted-foreground mt-1">
                             Hire verified agricultural service providers
                         </p>
                     </div>
                     <div className="flex gap-2">
-                        <Link href="/bookings" className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors">
+                        <Link href="/bookings" className="cta-secondary text-sm">
                             My Bookings
                         </Link>
-                        <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
+                        <button className="cta-primary text-sm">
                             Become a Provider
                         </button>
                     </div>
@@ -57,14 +62,14 @@ export default function ServicesPage() {
 
                 {/* Stats */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="glass-panel rounded-xl p-4">
+                    <div className="card-soft rounded-2xl p-4 elevate-card fade-up">
                         <div className="text-sm text-muted-foreground mb-1">Available Services</div>
                         <div className="text-2xl font-bold">{SERVICES.length}</div>
                         <div className="text-xs text-muted-foreground mt-1">
                             {SERVICES.filter(s => s.availability === 'immediate' || s.availability === 'same_day').length} available today
                         </div>
                     </div>
-                    <div className="glass-panel rounded-xl p-4">
+                    <div className="card-soft rounded-2xl p-4 elevate-card fade-up">
                         <div className="text-sm text-muted-foreground mb-1">Verified Providers</div>
                         <div className="text-2xl font-bold text-green-400">
                             {new Set(SERVICES.map(s => s.provider.id)).size}
@@ -73,14 +78,14 @@ export default function ServicesPage() {
                             All background checked
                         </div>
                     </div>
-                    <div className="glass-panel rounded-xl p-4">
+                    <div className="card-soft rounded-2xl p-4 elevate-card fade-up">
                         <div className="text-sm text-muted-foreground mb-1">Avg Response Time</div>
                         <div className="text-2xl font-bold text-blue-400">&lt; 1 hour</div>
                         <div className="text-xs text-muted-foreground mt-1">
                             Typical provider response
                         </div>
                     </div>
-                    <div className="glass-panel rounded-xl p-4">
+                    <div className="card-soft rounded-2xl p-4 elevate-card fade-up">
                         <div className="text-sm text-muted-foreground mb-1">Avg Rating</div>
                         <div className="text-2xl font-bold text-yellow-400">4.8</div>
                         <div className="text-xs text-muted-foreground mt-1">
@@ -90,11 +95,11 @@ export default function ServicesPage() {
                 </div>
 
                 {/* Category Tabs */}
-                <div className="flex gap-2 overflow-x-auto pb-2">
+                <div className="card-soft rounded-2xl p-2 flex gap-2 overflow-x-auto">
                     <button
                         onClick={() => setActiveCategory('all')}
                         className={cn(
-                            "px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap",
+                            "px-4 py-2 rounded-xl text-sm font-medium transition-colors whitespace-nowrap",
                             activeCategory === 'all'
                                 ? "bg-primary text-primary-foreground"
                                 : "bg-white/5 hover:bg-white/10"
@@ -110,7 +115,7 @@ export default function ServicesPage() {
                                 key={key}
                                 onClick={() => setActiveCategory(key as ServiceCategory)}
                                 className={cn(
-                                    "px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex items-center gap-2",
+                                    "px-4 py-2 rounded-xl text-sm font-medium transition-colors whitespace-nowrap flex items-center gap-2",
                                     activeCategory === key
                                         ? "bg-primary text-primary-foreground"
                                         : "bg-white/5 hover:bg-white/10"
@@ -131,7 +136,7 @@ export default function ServicesPage() {
                         return (
                             <div
                                 key={service.id}
-                                className="glass-panel rounded-xl p-6 hover:bg-white/10 transition-all group"
+                                className="card-soft rounded-2xl p-6 transition-all group elevate-card fade-up"
                             >
                                 {/* Header */}
                                 <div className="flex items-start gap-4 mb-4">
@@ -230,7 +235,7 @@ export default function ServicesPage() {
                                     </div>
                                     <button
                                         onClick={() => setSelectedServiceId(service.id)}
-                                        className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium"
+                                        className="btn-modal-primary"
                                     >
                                         Book Now
                                     </button>

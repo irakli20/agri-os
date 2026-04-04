@@ -28,6 +28,8 @@ import { ReorderModal, type ReorderData } from '@/components/modals/ReorderModal
 import { AddInventoryItemModal } from '@/components/modals/AddInventoryItemModal';
 import { type InventoryItem } from '@/lib/inventory-data';
 
+import { useGameStore } from '@/lib/game-store';
+
 const CATEGORY_LABELS: Record<InventoryCategory, string> = {
     chemical: 'Chemicals',
     seed: 'Seeds',
@@ -46,38 +48,50 @@ const STATUS_COLORS = {
 };
 
 export default function InventoryPage() {
+    const { gameMode, inventory: gameInventory } = useGameStore();
     const [activeCategory, setActiveCategory] = useState<InventoryCategory | 'all'>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [reorderItem, setReorderItem] = useState<InventoryItem | null>(null);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-    const stats = getInventoryStats();
 
-    const filteredItems = INVENTORY_ITEMS.filter(item => {
+    // Choose data source based on game mode
+    const inventorySource = (gameMode ? gameInventory : INVENTORY_ITEMS) as InventoryItem[];
+    const stats = gameMode ? {
+        total: gameInventory.length,
+        totalValue: gameInventory.reduce((sum, item) => sum + (item.currentValue || 0), 0),
+        lowStock: gameInventory.filter(item => item.quantity <= (item.reorderPoint || 0)).length,
+        criticalAlerts: 0 // Simplification for now
+    } : getInventoryStats();
+
+    const filteredItems = inventorySource.filter(item => {
         const matchesCategory = activeCategory === 'all' || item.category === activeCategory;
-        const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.sku?.toLowerCase().includes(searchQuery.toLowerCase());
+        const itemName = item.name || '';
+        const itemSku = (item as any).sku || '';
+        const matchesSearch = itemName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            itemSku.toLowerCase().includes(searchQuery.toLowerCase());
         return matchesCategory && matchesSearch;
     });
 
     return (
         <AppShell>
-            <div className="p-6 space-y-6 overflow-y-auto h-full">
+            <div className="page-shell">
                 {/* Header */}
-                <div className="flex items-center justify-between">
+                <div className="page-header">
                     <div>
+                        <p className="page-header-meta">Supply Chain</p>
                         <h1 className="text-3xl font-bold">Inventory & Warehouse</h1>
                         <p className="text-muted-foreground mt-1">
                             Track stock levels, warehouse conditions, and procurement
                         </p>
                     </div>
                     <div className="flex gap-2">
-                        <button className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors flex items-center gap-2">
+                        <button className="cta-secondary flex items-center gap-2">
                             <Filter className="w-4 h-4" />
                             Filter
                         </button>
                         <button
                             onClick={() => setIsAddModalOpen(true)}
-                            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2"
+                            className="cta-primary flex items-center gap-2"
                         >
                             <Plus className="w-4 h-4" />
                             Add Item
@@ -86,8 +100,8 @@ export default function InventoryPage() {
                 </div>
 
                 {/* Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="glass-panel rounded-xl p-4">
+                <div className="page-kpi-grid">
+                    <div className="kpi-card">
                         <div className="text-sm text-muted-foreground mb-1">Total Items</div>
                         <div className="text-2xl font-bold">{stats.total}</div>
                         <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
@@ -95,7 +109,7 @@ export default function InventoryPage() {
                             <span>12 new this month</span>
                         </div>
                     </div>
-                    <div className="glass-panel rounded-xl p-4">
+                    <div className="kpi-card">
                         <div className="text-sm text-muted-foreground mb-1">Total Value</div>
                         <div className="text-2xl font-bold text-green-400">
                             ${stats.totalValue.toLocaleString()}
@@ -104,14 +118,14 @@ export default function InventoryPage() {
                             Current inventory value
                         </div>
                     </div>
-                    <div className="glass-panel rounded-xl p-4">
+                    <div className="kpi-card">
                         <div className="text-sm text-muted-foreground mb-1">Low Stock</div>
                         <div className="text-2xl font-bold text-yellow-400">{stats.lowStock}</div>
                         <div className="text-xs text-muted-foreground mt-1">
                             Items below reorder point
                         </div>
                     </div>
-                    <div className="glass-panel rounded-xl p-4">
+                    <div className="kpi-card">
                         <div className="text-sm text-muted-foreground mb-1">Critical Alerts</div>
                         <div className="text-2xl font-bold text-red-400">{stats.criticalAlerts}</div>
                         <div className="text-xs text-muted-foreground mt-1">
@@ -124,14 +138,14 @@ export default function InventoryPage() {
                     {/* Main Inventory List */}
                     <div className="lg:col-span-2 space-y-6">
                         {/* Search and Filter */}
-                        <div className="flex gap-2 overflow-x-auto pb-2">
+                        <div className="segment-wrap w-fit overflow-x-auto">
                             <button
                                 onClick={() => setActiveCategory('all')}
                                 className={cn(
-                                    "px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap",
+                                    "segment-pill whitespace-nowrap",
                                     activeCategory === 'all'
-                                        ? "bg-primary text-primary-foreground"
-                                        : "bg-white/5 hover:bg-white/10"
+                                        ? "segment-pill-active"
+                                        : ""
                                 )}
                             >
                                 All Items
@@ -141,10 +155,10 @@ export default function InventoryPage() {
                                     key={key}
                                     onClick={() => setActiveCategory(key as InventoryCategory)}
                                     className={cn(
-                                        "px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap",
+                                        "segment-pill whitespace-nowrap",
                                         activeCategory === key
-                                            ? "bg-primary text-primary-foreground"
-                                            : "bg-white/5 hover:bg-white/10"
+                                            ? "segment-pill-active"
+                                            : ""
                                     )}
                                 >
                                     {label}
@@ -152,7 +166,7 @@ export default function InventoryPage() {
                             ))}
                         </div>
 
-                        <div className="glass-panel rounded-xl overflow-hidden">
+                        <div className="card-soft rounded-2xl overflow-hidden">
                             <div className="p-4 border-b border-white/10 flex items-center gap-3">
                                 <Search className="w-4 h-4 text-muted-foreground" />
                                 <input
@@ -249,23 +263,29 @@ export default function InventoryPage() {
                                 <h3 className="text-lg font-semibold">Active Alerts</h3>
                             </div>
                             <div className="space-y-3">
-                                {INVENTORY_ALERTS.map((alert) => (
-                                    <div key={alert.id} className={cn(
-                                        "p-3 rounded-lg border-l-2",
-                                        alert.severity === 'critical' ? "bg-red-500/10 border-red-500" :
-                                            alert.severity === 'warning' ? "bg-yellow-500/10 border-yellow-500" :
-                                                "bg-blue-500/10 border-blue-500"
-                                    )}>
-                                        <div className="flex justify-between items-start mb-1">
-                                            <span className="font-medium text-sm">{alert.item}</span>
-                                            <span className="text-[10px] uppercase opacity-70">{alert.type.replace('_', ' ')}</span>
-                                        </div>
-                                        <p className="text-xs text-muted-foreground mb-2">{alert.message}</p>
-                                        <div className="text-xs font-medium text-primary cursor-pointer hover:underline">
-                                            {alert.actionRequired} →
-                                        </div>
+                                {gameMode ? (
+                                    <div className="text-center py-4 text-muted-foreground text-sm italic">
+                                        No active alerts.
                                     </div>
-                                ))}
+                                ) : (
+                                    INVENTORY_ALERTS.map((alert) => (
+                                        <div key={alert.id} className={cn(
+                                            "p-3 rounded-lg border-l-2",
+                                            alert.severity === 'critical' ? "bg-red-500/10 border-red-500" :
+                                                alert.severity === 'warning' ? "bg-yellow-500/10 border-yellow-500" :
+                                                    "bg-blue-500/10 border-blue-500"
+                                        )}>
+                                            <div className="flex justify-between items-start mb-1">
+                                                <span className="font-medium text-sm">{alert.item}</span>
+                                                <span className="text-[10px] uppercase opacity-70">{alert.type.replace('_', ' ')}</span>
+                                            </div>
+                                            <p className="text-xs text-muted-foreground mb-2">{alert.message}</p>
+                                            <div className="text-xs font-medium text-primary cursor-pointer hover:underline">
+                                                {alert.actionRequired} →
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         </div>
 
@@ -276,41 +296,47 @@ export default function InventoryPage() {
                                 <h3 className="text-lg font-semibold">Warehouse Zones</h3>
                             </div>
                             <div className="space-y-4">
-                                {WAREHOUSE_ZONES.map((zone) => (
-                                    <div key={zone.id} className="space-y-2">
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="font-medium">{zone.name}</span>
-                                            <span className="text-muted-foreground">{zone.itemCount} items</span>
-                                        </div>
-
-                                        {/* Capacity Bar */}
-                                        <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                                            <div
-                                                className="h-full bg-blue-500 rounded-full"
-                                                style={{ width: `${(zone.currentUsage / zone.capacity) * 100}%` }}
-                                            />
-                                        </div>
-
-                                        {/* Zone Stats */}
-                                        <div className="flex justify-between text-xs text-muted-foreground">
-                                            <span>{Math.round((zone.currentUsage / zone.capacity) * 100)}% Full</span>
-                                            {(zone.temperature || zone.humidity) && (
-                                                <div className="flex gap-2">
-                                                    {zone.temperature && (
-                                                        <span className="flex items-center gap-1">
-                                                            <Thermometer className="w-3 h-3" /> {zone.temperature}°F
-                                                        </span>
-                                                    )}
-                                                    {zone.humidity && (
-                                                        <span className="flex items-center gap-1">
-                                                            <Droplets className="w-3 h-3" /> {zone.humidity}%
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
+                                {gameMode ? (
+                                    <div className="text-center py-4 text-muted-foreground text-sm italic">
+                                        No storage zones configured.
                                     </div>
-                                ))}
+                                ) : (
+                                    WAREHOUSE_ZONES.map((zone) => (
+                                        <div key={zone.id} className="space-y-2">
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span className="font-medium">{zone.name}</span>
+                                                <span className="text-muted-foreground">{zone.itemCount} items</span>
+                                            </div>
+
+                                            {/* Capacity Bar */}
+                                            <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                                                <div
+                                                    className="h-full bg-blue-500 rounded-full"
+                                                    style={{ width: `${(zone.currentUsage / zone.capacity) * 100}%` }}
+                                                />
+                                            </div>
+
+                                            {/* Zone Stats */}
+                                            <div className="flex justify-between text-xs text-muted-foreground">
+                                                <span>{Math.round((zone.currentUsage / zone.capacity) * 100)}% Full</span>
+                                                {(zone.temperature || zone.humidity) && (
+                                                    <div className="flex gap-2">
+                                                        {zone.temperature && (
+                                                            <span className="flex items-center gap-1">
+                                                                <Thermometer className="w-3 h-3" /> {zone.temperature}°F
+                                                            </span>
+                                                        )}
+                                                        {zone.humidity && (
+                                                            <span className="flex items-center gap-1">
+                                                                <Droplets className="w-3 h-3" /> {zone.humidity}%
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         </div>
                     </div>
@@ -323,12 +349,12 @@ export default function InventoryPage() {
                     item={{
                         id: reorderItem.id,
                         name: reorderItem.name,
-                        category: reorderItem.category,
+                        category: reorderItem.category as any,
                         currentStock: reorderItem.quantity,
                         unit: reorderItem.unit,
-                        reorderPoint: reorderItem.reorderPoint,
+                        reorderPoint: reorderItem.reorderPoint || 0,
                         avgPrice: reorderItem.purchasePrice || 0,
-                        supplier: reorderItem.supplier || 'AgChem Supply Co.',
+                        supplier: reorderItem.supplier || 'N/A',
                     }}
                     isOpen={!!reorderItem}
                     onClose={() => setReorderItem(null)}
@@ -343,7 +369,6 @@ export default function InventoryPage() {
                 onClose={() => setIsAddModalOpen(false)}
                 onSubmit={(item) => {
                     console.log('Item added:', item);
-                    // In a real app, this would send to API
                 }}
             />
         </AppShell>

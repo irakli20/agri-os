@@ -27,30 +27,48 @@ import { useState } from 'react';
 import { PaymentMethodsModal } from '@/components/modals/PaymentMethodsModal';
 import { AddTransactionModal } from '@/components/modals/AddTransactionModal';
 
+import { useGameStore } from '@/lib/game-store';
+
 export default function FinancePage() {
+    const { gameMode, getCurrentPlayer, transactions: gameTransactions } = useGameStore();
     const [isPaymentMethodsOpen, setIsPaymentMethodsOpen] = useState(false);
     const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
     const [transactionType, setTransactionType] = useState<'income' | 'expense'>('expense');
-    const stats = getFinanceStats();
-    const pendingTransactions = getPendingTransactions();
+
+    const player = getCurrentPlayer();
+
+    const stats = gameMode ? {
+        total: 0,
+        lowStock: 0,
+        expiringSoon: 0,
+        totalValue: 0,
+        criticalAlerts: 0
+    } : getFinanceStats(); // Actually getFinanceStats is for finance-data, let's just ignore it and use direct mappings Below
+
+    const pendingTransactions = gameMode ? [] : getPendingTransactions();
+
+    const currentBalance = gameMode ? (player?.balance || 0) : FINANCIAL_SUMMARY.netProfit; // Simplified mapping
+    const displayedTransactions = gameMode ? gameTransactions : TRANSACTIONS;
+    const displayedBudgets = gameMode ? [] : BUDGETS;
 
     return (
         <AppShell>
-            <div className="p-6 space-y-6 overflow-y-auto h-full">
+            <div className="page-shell">
                 {/* Header */}
-                <div className="flex items-center justify-between">
+                <div className="page-header">
                     <div>
+                        <p className="page-header-meta">Financial Control</p>
                         <h1 className="text-3xl font-bold">Financial Management</h1>
                         <p className="text-muted-foreground mt-1">
                             Track expenses, automate payments, and manage budgets
                         </p>
                     </div>
                     <div className="flex gap-2">
-                        <button className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors flex items-center gap-2">
+                        <button className="cta-secondary flex items-center gap-2">
                             <TrendingDown className="w-4 h-4" />
                             Download Report
                         </button>
-                        <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2">
+                        <button className="cta-primary flex items-center gap-2">
                             <CreditCard className="w-4 h-4" />
                             Make Payment
                         </button>
@@ -58,36 +76,36 @@ export default function FinancePage() {
                 </div>
 
                 {/* Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="glass-panel rounded-xl p-4">
-                        <div className="text-sm text-muted-foreground mb-1">Net Profit (YTD)</div>
+                <div className="page-kpi-grid">
+                    <div className="kpi-card">
+                        <div className="text-sm text-muted-foreground mb-1">Available Balance</div>
                         <div className="text-2xl font-bold text-green-400">
-                            ${FINANCIAL_SUMMARY.netProfit.toLocaleString()}
+                            ${currentBalance.toLocaleString()}
                         </div>
                         <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                             <ArrowUpRight className="w-3 h-3 text-green-400" />
-                            <span>12% vs last year</span>
+                            <span>{gameMode ? "Current game funds" : "12% vs last year"}</span>
                         </div>
                     </div>
-                    <div className="glass-panel rounded-xl p-4">
+                    <div className="kpi-card">
                         <div className="text-sm text-muted-foreground mb-1">Total Expenses</div>
                         <div className="text-2xl font-bold text-red-400">
-                            ${FINANCIAL_SUMMARY.totalExpenses.toLocaleString()}
+                            ${gameMode ? 0 : FINANCIAL_SUMMARY.totalExpenses.toLocaleString()}
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
-                            15% below budget
+                            {gameMode ? "No costs recorded" : "15% below budget"}
                         </div>
                     </div>
-                    <div className="glass-panel rounded-xl p-4">
+                    <div className="kpi-card">
                         <div className="text-sm text-muted-foreground mb-1">Cash Flow</div>
                         <div className="text-2xl font-bold text-blue-400">
-                            ${FINANCIAL_SUMMARY.cashFlow.toLocaleString()}
+                            ${gameMode ? 0 : FINANCIAL_SUMMARY.cashFlow.toLocaleString()}
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
-                            Current month
+                            {gameMode ? "Operational cashflow" : "Current month"}
                         </div>
                     </div>
-                    <div className="glass-panel rounded-xl p-4">
+                    <div className="kpi-card">
                         <div className="text-sm text-muted-foreground mb-1">Projected Spend</div>
                         <div className="text-2xl font-bold text-yellow-400">
                             ${FINANCIAL_SUMMARY.projectedExpenses.toLocaleString()}
@@ -102,7 +120,7 @@ export default function FinancePage() {
                     {/* Main Content: Budgets & Transactions */}
                     <div className="lg:col-span-2 space-y-6">
                         {/* Budget Overview */}
-                        <div className="glass-panel rounded-xl p-5">
+                        <div className="card-soft rounded-2xl p-5">
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-2">
                                     <PieChart className="w-5 h-5 text-purple-400" />
@@ -112,48 +130,56 @@ export default function FinancePage() {
                             </div>
 
                             <div className="space-y-4">
-                                {BUDGETS.map((budget) => {
-                                    const status = getBudgetStatus(budget);
-                                    const percentage = Math.round((budget.spent / budget.allocated) * 100);
+                                {displayedBudgets.length === 0 ? (
+                                    <div className="p-8 text-center text-muted-foreground bg-white/5 rounded-lg border border-dashed border-white/10">
+                                        <PieChart className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                                        <p>No active budgets defined.</p>
+                                        <p className="text-xs mt-1">Manage your spending as you scale your farm operations.</p>
+                                    </div>
+                                ) : (
+                                    displayedBudgets.map((budget) => {
+                                        const status = getBudgetStatus(budget);
+                                        const percentage = Math.round((budget.spent / budget.allocated) * 100);
 
-                                    return (
-                                        <div key={budget.id} className="space-y-2">
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="font-medium">{budget.category}</span>
-                                                <span className="text-muted-foreground">
-                                                    ${budget.spent.toLocaleString()} / ${budget.allocated.toLocaleString()}
-                                                </span>
-                                            </div>
+                                        return (
+                                            <div key={budget.id} className="space-y-2">
+                                                <div className="flex justify-between items-center text-sm">
+                                                    <span className="font-medium">{budget.category}</span>
+                                                    <span className="text-muted-foreground">
+                                                        ${budget.spent.toLocaleString()} / ${budget.allocated.toLocaleString()}
+                                                    </span>
+                                                </div>
 
-                                            <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                                                <div
-                                                    className={cn("h-full rounded-full transition-all duration-500",
-                                                        status === 'critical' ? "bg-red-500" :
-                                                            status === 'warning' ? "bg-yellow-500" :
-                                                                "bg-green-500"
-                                                    )}
-                                                    style={{ width: `${Math.min(100, percentage)}%` }}
-                                                />
-                                            </div>
+                                                <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                                                    <div
+                                                        className={cn("h-full rounded-full transition-all duration-500",
+                                                            status === 'critical' ? "bg-red-500" :
+                                                                status === 'warning' ? "bg-yellow-500" :
+                                                                    "bg-green-500"
+                                                        )}
+                                                        style={{ width: `${Math.min(100, percentage)}%` }}
+                                                    />
+                                                </div>
 
-                                            <div className="flex justify-between text-xs">
-                                                <span className={cn(
-                                                    status === 'critical' ? "text-red-400" :
-                                                        status === 'warning' ? "text-yellow-400" :
-                                                            "text-green-400"
-                                                )}>
-                                                    {percentage}% Used
-                                                </span>
-                                                <span className="text-muted-foreground capitalize">{budget.period} Budget</span>
+                                                <div className="flex justify-between text-xs">
+                                                    <span className={cn(
+                                                        status === 'critical' ? "text-red-400" :
+                                                            status === 'warning' ? "text-yellow-400" :
+                                                                "text-green-400"
+                                                    )}>
+                                                        {percentage}% Used
+                                                    </span>
+                                                    <span className="text-muted-foreground capitalize">{budget.period} Budget</span>
+                                                </div>
                                             </div>
-                                        </div>
-                                    );
-                                })}
+                                        );
+                                    })
+                                )}
                             </div>
                         </div>
 
                         {/* Recent Transactions */}
-                        <div className="glass-panel rounded-xl p-5">
+                        <div className="card-soft rounded-2xl p-5">
                             <div className="flex items-center gap-2 mb-4">
                                 <DollarSign className="w-5 h-5 text-blue-400" />
                                 <h3 className="text-lg font-semibold">Recent Transactions</h3>
@@ -171,35 +197,43 @@ export default function FinancePage() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-white/5">
-                                        {TRANSACTIONS.map((tx) => (
-                                            <tr key={tx.id} className="hover:bg-white/5 transition-colors">
-                                                <td className="px-4 py-3 text-muted-foreground">
-                                                    {new Date(tx.date).toLocaleDateString()}
-                                                </td>
-                                                <td className="px-4 py-3 font-medium">
-                                                    {tx.description}
-                                                    <div className="text-xs text-muted-foreground">{tx.paymentMethod}</div>
-                                                </td>
-                                                <td className="px-4 py-3 text-muted-foreground">
-                                                    {tx.category}
-                                                </td>
-                                                <td className={cn("px-4 py-3 font-medium",
-                                                    tx.type === 'income' ? "text-green-400" : "text-foreground"
-                                                )}>
-                                                    {tx.type === 'income' ? '+' : '-'}${tx.amount.toLocaleString()}
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <span className={cn(
-                                                        "px-2 py-1 rounded text-[10px] uppercase font-bold tracking-wider",
-                                                        tx.status === 'completed' ? "bg-green-500/20 text-green-400" :
-                                                            tx.status === 'pending' ? "bg-yellow-500/20 text-yellow-400" :
-                                                                "bg-red-500/20 text-red-400"
-                                                    )}>
-                                                        {tx.status}
-                                                    </span>
+                                        {displayedTransactions.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                                                    No recent transactions recorded.
                                                 </td>
                                             </tr>
-                                        ))}
+                                        ) : (
+                                            displayedTransactions.map((tx) => (
+                                                <tr key={tx.id} className="hover:bg-white/5 transition-colors">
+                                                    <td className="px-4 py-3 text-muted-foreground">
+                                                        {new Date(tx.date).toLocaleDateString()}
+                                                    </td>
+                                                    <td className="px-4 py-3 font-medium">
+                                                        {(tx as any).description || (tx as any).name || 'Transaction'}
+                                                        <div className="text-xs text-muted-foreground">{(tx as any).paymentMethod || 'Wallet'}</div>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-muted-foreground">
+                                                        {(tx as any).category || 'General'}
+                                                    </td>
+                                                    <td className={cn("px-4 py-3 font-medium",
+                                                        tx.type === 'income' ? "text-green-400" : "text-foreground"
+                                                    )}>
+                                                        {tx.type === 'income' ? '+' : '-'}${tx.amount.toLocaleString()}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <span className={cn(
+                                                            "px-2 py-1 rounded text-[10px] uppercase font-bold tracking-wider",
+                                                            (tx as any).status === 'completed' ? "bg-green-500/20 text-green-400" :
+                                                                (tx as any).status === 'pending' ? "bg-yellow-500/20 text-yellow-400" :
+                                                                    "bg-green-500/20 text-green-400" // Default for game tx
+                                                        )}>
+                                                            {(tx as any).status || 'completed'}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
                                     </tbody>
                                 </table>
                             </div>

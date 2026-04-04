@@ -202,7 +202,7 @@ export function ImageUploadModal({ isOpen, onClose, preselectedFieldId }: ImageU
                                 <span className="text-sm text-muted-foreground truncate flex-1">{fileName}</span>
                                 <button
                                     onClick={handleBrowseClick}
-                                    className="text-sm text-primary hover:text-primary/80 transition-colors"
+                                    className="text-sm text-primary hover:text-primary/90 transition-colors"
                                 >
                                     Change
                                 </button>

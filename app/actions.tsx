@@ -88,7 +88,7 @@ export async function submitUserMessage(content: string): Promise<ClientMessage>
         } else {
             ui = (
                 <div className="bg-card/95 backdrop-blur-sm border rounded-lg p-4 text-sm shadow-lg">
-                    <p>I can help you analyze field data. Try asking to see "NDVI" or "Thermal" imagery.</p>
+                    <p>I can help you analyze field data. Try asking to see &quot;NDVI&quot; or &quot;Thermal&quot; imagery.</p>
                 </div>
             );
         }

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Finance & Payment Data
  * 

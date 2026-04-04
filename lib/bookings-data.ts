@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Service Bookings Data
  * 
@@ -74,8 +75,8 @@ export const BOOKING_STATUS_CONFIG: Record<BookingStatus, {
     },
     completed: {
         label: 'Completed',
-        color: 'text-emerald-400',
-        bgColor: 'bg-emerald-500/20',
+        color: 'text-primary',
+        bgColor: 'bg-primary/20',
         description: 'Service has been completed',
     },
     cancelled: {

@@ -12,7 +12,9 @@ import {
     Upload
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { ScoutingStorage, type ScoutingMission } from '@/lib/scouting-data';
+import { useFieldStore } from '@/lib/field-store';
+import { useGameStore } from '@/lib/game-store';
+import { ScoutingStorage, buildPerformedAerialParams, buildPlannedAerialParams, mapBbchToCornReferenceStage, mapCropStageCodeToBbch, mapCropStageCodeToReferenceStage, type ScoutingMission } from '@/lib/scouting-data';
 import { PEST_INFESTATIONS, DISEASE_INCIDENTS } from '@/lib/pest-disease-data';
 
 interface ScoutingReportModalProps {
@@ -22,6 +24,8 @@ interface ScoutingReportModalProps {
 }
 
 export function ScoutingReportModal({ isOpen, onClose, mission }: ScoutingReportModalProps) {
+    const { fields, gameFields, updateField } = useFieldStore();
+    const { gameMode } = useGameStore();
     const [step, setStep] = useState(1);
     const [cropStage, setCropStage] = useState('V3');
     const [standCount, setStandCount] = useState('');
@@ -36,7 +40,33 @@ export function ScoutingReportModal({ isOpen, onClose, mission }: ScoutingReport
         // Simulate API call
         await new Promise(resolve => setTimeout(resolve, 1500));
 
+        const activeFields = gameMode ? gameFields : fields;
+        const missionField = activeFields.find((field) => field.id === mission.fieldId);
+        const detectedBbch = mapCropStageCodeToBbch(cropStage);
+        const existingRun = ScoutingStorage.getLatestRunByMission(mission.id);
+        const fallbackPlanned = buildPlannedAerialParams({
+            acres: missionField?.acres || 40,
+            stageIndex: mapBbchToCornReferenceStage(detectedBbch),
+            routePattern: mission.routePattern as any,
+            captureProfile: (missionField?.crop || '').toLowerCase().includes('corn') ? 'corn' : 'general',
+        });
+        const planned = existingRun?.planned || fallbackPlanned;
+        const performed = buildPerformedAerialParams(planned, 8);
+
+        ScoutingStorage.completeMissionRun(mission.id, {
+            performed,
+            detectedStageId: mapCropStageCodeToReferenceStage(cropStage),
+            detectedBbch,
+            notes: notes.trim(),
+            scannedAtIso: new Date().toISOString(),
+        });
         ScoutingStorage.updateStatus(mission.id, 'completed');
+
+        updateField(mission.fieldId, {
+            isScouted: true,
+            bbchStage: detectedBbch,
+            lastFlightDate: new Date().toISOString().split('T')[0],
+        });
         setIsSuccess(true);
         setIsSubmitting(false);
 
@@ -60,9 +90,9 @@ export function ScoutingReportModal({ isOpen, onClose, mission }: ScoutingReport
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className="glass-panel rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col">
+            <div className="modal-shell w-full max-w-4xl max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col">
                 {/* Header */}
-                <div className="p-6 border-b border-white/10 flex items-start justify-between shrink-0">
+                <div className="modal-header">
                     <div>
                         <h2 className="text-xl font-bold">Submit Scouting Report</h2>
                         <p className="text-sm text-muted-foreground">
@@ -255,17 +285,17 @@ export function ScoutingReportModal({ isOpen, onClose, mission }: ScoutingReport
 
                 {/* Footer */}
                 {!isSuccess && (
-                    <div className="p-6 border-t border-white/10 flex justify-between shrink-0">
+                    <div className="modal-footer justify-between">
                         <button
                             onClick={() => step > 1 ? setStep(step - 1) : onClose()}
-                            className="px-6 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
+                            className="btn-modal-secondary"
                         >
                             {step > 1 ? 'Back' : 'Cancel'}
                         </button>
                         <button
                             onClick={() => step < 3 ? setStep(step + 1) : handleSubmit()}
                             disabled={isSubmitting}
-                            className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2"
+                            className="btn-modal-primary flex items-center gap-2"
                         >
                             {isSubmitting ? 'Submitting...' : step < 3 ? (
                                 <>Next <ChevronRight className="w-4 h-4" /></>

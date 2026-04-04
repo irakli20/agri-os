@@ -1,0 +1,22 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/game/marketplace/services/page": "app/game/marketplace/services/page.js",
+  "/fields/[id]/page": "app/fields/[id]/page.js",
+  "/game/dashboard/page": "app/game/dashboard/page.js",
+  "/game/marketplace/supplies/page": "app/game/marketplace/supplies/page.js",
+  "/fields/page": "app/fields/page.js",
+  "/crops/page": "app/crops/page.js",
+  "/equipment/page": "app/equipment/page.js",
+  "/page": "app/page.js",
+  "/runbooks/page": "app/runbooks/page.js",
+  "/fleet/page": "app/fleet/page.js",
+  "/inventory/page": "app/inventory/page.js",
+  "/finance/page": "app/finance/page.js",
+  "/weather/page": "app/weather/page.js",
+  "/review/page": "app/review/page.js",
+  "/procurement/page": "app/procurement/page.js",
+  "/game/marketplace/equipment/page": "app/game/marketplace/equipment/page.js",
+  "/services/page": "app/services/page.js",
+  "/game/marketplace/page": "app/game/marketplace/page.js",
+  "/game/marketplace/[id]/page": "app/game/marketplace/[id]/page.js"
+}

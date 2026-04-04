@@ -122,7 +122,7 @@ export function AddDroneModal({ isOpen, onClose, onSubmit }: AddDroneModalProps)
                             <div className="text-sm">
                                 <p className="font-medium text-blue-400 mb-1">Initial Setup</p>
                                 <p className="text-muted-foreground">
-                                    The drone will be added with "Ready" status and 100% battery. You can update these values later from the Fleet page.
+                                    The drone will be added with &quot;Ready&quot; status and 100% battery. You can update these values later from the Fleet page.
                                 </p>
                             </div>
                         </div>

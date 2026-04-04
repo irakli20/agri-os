@@ -18,7 +18,7 @@ export function SpectrumSlider() {
     const bands = [
         { id: 'rgb', label: 'RGB', icon: Eye, color: 'bg-blue-500' },
         { id: 'ndvi', label: 'NDVI', icon: Activity, color: 'bg-green-500' },
-        { id: 'ndre', label: 'NDRE', icon: Activity, color: 'bg-emerald-500' },
+        { id: 'ndre', label: 'NDRE', icon: Activity, color: 'bg-primary' },
         { id: 'thermal', label: 'Thermal', icon: Thermometer, color: 'bg-red-500' },
     ] as const;
 

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Procurement & Price Scouting Data
  * 

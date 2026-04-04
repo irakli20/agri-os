@@ -48,9 +48,9 @@ export function ServiceBookingModal({ service, isOpen, onClose }: ServiceBooking
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className="glass-panel rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+            <div className="modal-shell w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
                 {/* Header */}
-                <div className="p-6 border-b border-white/10 flex items-start justify-between">
+                <div className="modal-header">
                     <div>
                         <h2 className="text-xl font-bold">Book Service</h2>
                         <p className="text-sm text-muted-foreground mt-1">{service.title}</p>
@@ -94,7 +94,7 @@ export function ServiceBookingModal({ service, isOpen, onClose }: ServiceBooking
                 </div>
 
                 {/* Content */}
-                <div className="p-6 pt-0">
+                <div className="modal-content !pt-0">
                     {/* Step 1: Service Details */}
                     {step === 1 && (
                         <div className="space-y-6">
@@ -296,7 +296,7 @@ export function ServiceBookingModal({ service, isOpen, onClose }: ServiceBooking
                             </div>
                             <h3 className="text-xl font-bold mb-2">Booking Confirmed!</h3>
                             <p className="text-muted-foreground mb-6">
-                                Your service has been scheduled. You'll receive a confirmation email shortly.
+                                Your service has been scheduled. You&apos;ll receive a confirmation email shortly.
                             </p>
                             <div className="bg-white/5 rounded-xl p-4 text-left mb-6">
                                 <div className="text-sm text-muted-foreground mb-1">Booking Reference</div>
@@ -304,7 +304,7 @@ export function ServiceBookingModal({ service, isOpen, onClose }: ServiceBooking
                             </div>
                             <button
                                 onClick={onClose}
-                                className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                                className="btn-modal-primary"
                             >
                                 Done
                             </button>
@@ -314,10 +314,10 @@ export function ServiceBookingModal({ service, isOpen, onClose }: ServiceBooking
 
                 {/* Footer Actions */}
                 {step < 4 && (
-                    <div className="p-6 border-t border-white/10 flex justify-between">
+                    <div className="modal-footer !justify-between">
                         <button
                             onClick={() => step > 1 ? setStep(step - 1) : onClose()}
-                            className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
+                            className="btn-modal-secondary"
                         >
                             {step === 1 ? 'Cancel' : 'Back'}
                         </button>
@@ -330,9 +330,9 @@ export function ServiceBookingModal({ service, isOpen, onClose }: ServiceBooking
                                 isSubmitting
                             }
                             className={cn(
-                                "px-6 py-2 bg-primary text-primary-foreground rounded-lg transition-colors",
+                                "btn-modal-primary",
                                 "disabled:opacity-50 disabled:cursor-not-allowed",
-                                "hover:bg-primary/90"
+                                "min-w-[160px]"
                             )}
                         >
                             {isSubmitting ? 'Processing...' : step === 3 ? 'Confirm Booking' : 'Continue'}

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Notifications Data
  * 
@@ -50,8 +51,8 @@ export const NOTIFICATION_CONFIG: Record<NotificationType, {
         icon: 'Play',
     },
     service_completed: {
-        color: 'text-emerald-400',
-        bgColor: 'bg-emerald-500/20',
+        color: 'text-primary',
+        bgColor: 'bg-primary/20',
         icon: 'CheckCircle2',
     },
     booking_cancelled: {

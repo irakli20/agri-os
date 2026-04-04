@@ -11,7 +11,9 @@ import {
     CheckCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { ScoutingStorage, type ScoutingTemplate } from '@/lib/scouting-data';
+import { useFieldStore } from '@/lib/field-store';
+import { useGameStore } from '@/lib/game-store';
+import { ScoutingStorage, buildPlannedAerialParams, mapBbchToCornReferenceStage, type ScoutingTemplate } from '@/lib/scouting-data';
 
 interface ScoutingScheduleModalProps {
     isOpen: boolean;
@@ -49,6 +51,8 @@ export function ScoutingScheduleModal({
     fieldName,
     onSchedule
 }: ScoutingScheduleModalProps) {
+    const { fields, gameFields } = useFieldStore();
+    const { gameMode, gameTime } = useGameStore();
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [scout, setScout] = useState('');
     const [priority, setPriority] = useState('medium');
@@ -62,7 +66,7 @@ export function ScoutingScheduleModal({
     const handleSubmit = () => {
         if (!fieldId || !fieldName) return;
 
-        ScoutingStorage.addMission({
+        const mission = ScoutingStorage.addMission({
             fieldId,
             fieldName,
             scoutName: scout,
@@ -71,6 +75,23 @@ export function ScoutingScheduleModal({
             templateId,
             routePattern: routePattern as any,
             notes
+        });
+
+        const activeFields = gameMode ? gameFields : fields;
+        const targetField = activeFields.find((item) => item.id === fieldId);
+        const plannedParams = buildPlannedAerialParams({
+            acres: targetField?.acres || 40,
+            stageIndex: mapBbchToCornReferenceStage(targetField?.bbchStage || '11'),
+            routePattern: routePattern as any,
+            captureProfile: (targetField?.crop || '').toLowerCase().includes('corn') ? 'corn' : 'general',
+        });
+
+        ScoutingStorage.createPlannedRunForMission(mission, plannedParams, {
+            notes,
+            scheduledDate: date,
+            gameYear: gameTime.year,
+            gameSeason: gameTime.season,
+            gameWeek: gameTime.week,
         });
 
         setIsSuccess(true);
@@ -88,11 +109,11 @@ export function ScoutingScheduleModal({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className="glass-panel rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+            <div className="modal-shell w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
                 {/* Header */}
-                <div className="p-6 border-b border-white/10 flex items-start justify-between">
+                <div className="modal-header">
                     <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-xl bg-green-500/20 flex items-center justify-center">
+                        <div className="modal-icon-chip bg-green-500/20">
                             <MapPin className="w-6 h-6 text-green-400" />
                         </div>
                         <div>
@@ -238,17 +259,17 @@ export function ScoutingScheduleModal({
 
                 {/* Footer */}
                 {!isSuccess && (
-                    <div className="p-6 border-t border-white/10 flex justify-end gap-3">
+                    <div className="modal-footer">
                         <button
                             onClick={onClose}
-                            className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
+                            className="btn-modal-secondary"
                         >
                             Cancel
                         </button>
                         <button
                             onClick={handleSubmit}
                             disabled={!scout || !date}
-                            className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="btn-modal-primary"
                         >
                             Schedule Mission
                         </button>

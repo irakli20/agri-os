@@ -9,7 +9,9 @@ import {
     Calendar,
     CheckCircle,
     Map as MapIcon,
-    Trash2
+    Trash2,
+    Upload,
+    Image as ImageIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import mapboxgl from 'mapbox-gl';
@@ -48,6 +50,8 @@ export function AddFieldModal({ isOpen, onClose, onSubmit }: AddFieldModalProps)
     const [isPolygonClosed, setIsPolygonClosed] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
+    const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Reset state when modal opens
     useEffect(() => {
@@ -65,8 +69,21 @@ export function AddFieldModal({ isOpen, onClose, onSubmit }: AddFieldModalProps)
             setIsPolygonClosed(false);
             setIsSuccess(false);
             setIsDrawing(false);
+            if (uploadedImage) {
+                URL.revokeObjectURL(uploadedImage);
+                setUploadedImage(null);
+            }
         }
     }, [isOpen]);
+
+    // Cleanup object URL on unmount
+    useEffect(() => {
+        return () => {
+            if (uploadedImage) {
+                URL.revokeObjectURL(uploadedImage);
+            }
+        };
+    }, [uploadedImage]);
 
     useEffect(() => {
         if (!isOpen || !mapContainerRef.current) return;
@@ -206,13 +223,31 @@ export function AddFieldModal({ isOpen, onClose, onSubmit }: AddFieldModalProps)
         };
     }, [isOpen]);
 
-    const [draggedPinIndex, setDraggedPinIndex] = useState<number | null>(null);
+    // ---- PIN SYSTEM (rewritten from scratch) ----
+    const overlayRef = useRef<HTMLDivElement>(null);
+    const [dragIdx, setDragIdx] = useState<number | null>(null);
+    const dragStartRef = useRef<{ mx: number; my: number; coord: [number, number] } | null>(null);
+    const wasDragRef = useRef(false);
+
+    // Convert a pixel position (relative to the overlay) to [lng, lat]
+    const pxToCoord = (px: number, py: number, w: number, h: number): [number, number] => {
+        const lng = 44.8 + (px / w - 0.5) * 0.05;
+        const lat = 41.7 - (py / h - 0.5) * 0.05;
+        return [lng, lat];
+    };
+
+    // Convert a [lng, lat] to pixel position (relative to the overlay)
+    const coordToPx = (coord: [number, number], w: number, h: number): { x: number; y: number } => {
+        const x = ((coord[0] - 44.8) / 0.05 + 0.5) * w;
+        const y = (-(coord[1] - 41.7) / 0.05 + 0.5) * h;
+        return { x, y };
+    };
 
     // Mapbox Draggable Markers
     const createMarker = (map: mapboxgl.Map, coord: [number, number], index: number) => {
         const marker = new mapboxgl.Marker({
-            color: index === 0 ? '#ef4444' : '#22c55e',
-            scale: index === 0 ? 1.2 : 0.8,
+            color: '#22c55e',
+            scale: 0.8,
             draggable: true
         })
             .setLngLat(coord)
@@ -241,63 +276,129 @@ export function AddFieldModal({ isOpen, onClose, onSubmit }: AddFieldModalProps)
         return marker;
     };
 
-    // Simulated click handler for Simulation Mode
-    const handleSimulatedClick = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!IS_PLACEHOLDER_TOKEN || !mapContainerRef.current || isPolygonClosed || draggedPinIndex !== null) return;
+    // ---------- CLICK TO PLACE A NEW PIN ----------
+    const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (!IS_PLACEHOLDER_TOKEN || isPolygonClosed || dragIdx !== null) return;
 
-        const rect = mapContainerRef.current.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        // Auto-start drawing on first click
+        if (!isDrawing) setIsDrawing(true);
 
-        const lng = 44.8 + (x / rect.width - 0.5) * 0.05;
-        const lat = 41.7 - (y / rect.height - 0.5) * 0.05;
+        const el = overlayRef.current;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const px = e.clientX - rect.left;
+        const py = e.clientY - rect.top;
+        const newCoord = pxToCoord(px, py, rect.width, rect.height);
 
         setFormData((prev: any) => {
-            const newBoundary = [...prev.boundary, [lng, lat]];
+            const newBoundary = [...prev.boundary, newCoord];
             let newAcres = prev.acres;
-
             if (newBoundary.length > 2) {
                 try {
                     const polygon = turf.polygon([[...newBoundary, newBoundary[0]]]);
                     newAcres = areaToAcres(turf.area(polygon)).toFixed(1);
-                } catch (e) { }
+                } catch (_) { }
             }
             return { ...prev, boundary: newBoundary, acres: newAcres };
         });
     };
 
-    const handleSimulatedMouseMove = (e: React.MouseEvent) => {
-        if (draggedPinIndex === null || !mapContainerRef.current) return;
+    // ---------- PIN MOUSE DOWN (start drag) ----------
+    const handlePinDown = (e: React.MouseEvent, idx: number, coord: [number, number]) => {
+        e.stopPropagation(); // prevent map click
+        e.preventDefault();  // prevent text selection
+        setDragIdx(idx);
+        wasDragRef.current = false;
+        dragStartRef.current = { mx: e.clientX, my: e.clientY, coord: [...coord] };
+    };
 
-        const rect = mapContainerRef.current.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+    // ---------- MOUSE MOVE (drag pin) ----------
+    const handleOverlayMouseMove = (e: React.MouseEvent) => {
+        if (dragIdx === null || !dragStartRef.current || !overlayRef.current) return;
 
-        const lng = 44.8 + (x / rect.width - 0.5) * 0.05;
-        const lat = 41.7 - (y / rect.height - 0.5) * 0.05;
+        const dx = e.clientX - dragStartRef.current.mx;
+        const dy = e.clientY - dragStartRef.current.my;
+
+        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+            wasDragRef.current = true;
+        }
+
+        if (!wasDragRef.current) return;
+
+        const rect = overlayRef.current.getBoundingClientRect();
+        const dLng = (dx / rect.width) * 0.05;
+        const dLat = -(dy / rect.height) * 0.05;
+        const newLng = dragStartRef.current.coord[0] + dLng;
+        const newLat = dragStartRef.current.coord[1] + dLat;
 
         setFormData((prev: any) => {
             const newBoundary = [...prev.boundary];
-            newBoundary[draggedPinIndex] = [lng, lat];
-
+            newBoundary[dragIdx] = [newLng, newLat];
             let newAcres = prev.acres;
             if (newBoundary.length > 2) {
                 try {
                     const polygon = turf.polygon([[...newBoundary, newBoundary[0]]]);
                     newAcres = areaToAcres(turf.area(polygon)).toFixed(1);
-                } catch (e) { }
+                } catch (_) { }
             }
             return { ...prev, boundary: newBoundary, acres: newAcres };
         });
     };
 
-    const handlePinMouseDown = (e: React.MouseEvent, index: number) => {
-        e.stopPropagation();
-        setDraggedPinIndex(index);
+    // ---------- MOUSE UP (end drag) ----------
+    const handleOverlayMouseUp = () => {
+        if (dragIdx !== null) {
+            // Delay clearing wasDrag so pin onClick can see it
+            setTimeout(() => { wasDragRef.current = false; }, 100);
+        }
+        setDragIdx(null);
+        dragStartRef.current = null;
     };
 
-    const handleMouseUp = () => {
-        setDraggedPinIndex(null);
+    // ---------- PIN CLICK (close polygon or no-op) ----------
+    const handlePinClick = (e: React.MouseEvent, idx: number) => {
+        e.stopPropagation(); // ALWAYS prevent map click
+        if (wasDragRef.current) return; // was a drag, not a click
+
+        if (idx === 0 && formData.boundary.length >= 3) {
+            setIsPolygonClosed(true);
+            const polygonBound = [...formData.boundary, formData.boundary[0]];
+            const polygon = turf.polygon([polygonBound]);
+            const acres = areaToAcres(turf.area(polygon));
+            setFormData(prev => ({ ...prev, acres: acres.toFixed(1) }));
+        }
+    };
+
+    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Convert to a persistent base64 data URL (blob URLs die on navigation)
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const img = new window.Image();
+            img.onload = () => {
+                // Compress via canvas to keep localStorage size reasonable
+                const canvas = document.createElement('canvas');
+                const MAX_SIZE = 800;
+                let w = img.width;
+                let h = img.height;
+                if (w > MAX_SIZE || h > MAX_SIZE) {
+                    const ratio = Math.min(MAX_SIZE / w, MAX_SIZE / h);
+                    w = Math.round(w * ratio);
+                    h = Math.round(h * ratio);
+                }
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d')!;
+                ctx.drawImage(img, 0, 0, w, h);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                setUploadedImage(dataUrl);
+                setIsDrawing(true);
+            };
+            img.src = event.target?.result as string;
+        };
+        reader.readAsDataURL(file);
     };
 
     if (!isOpen) return null;
@@ -324,7 +425,7 @@ export function AddFieldModal({ isOpen, onClose, onSubmit }: AddFieldModalProps)
             healthStatus: 'good' as const,
             lastFlightDate: new Date().toISOString().split('T')[0],
             coordinates: coordinates,
-            image: '/ndvi-field.png'
+            image: uploadedImage || '/ndvi-field.png'
         };
 
         onSubmit?.(newField);
@@ -455,18 +556,48 @@ export function AddFieldModal({ isOpen, onClose, onSubmit }: AddFieldModalProps)
                                             </div>
                                         </div>
 
+                                        <div className="flex items-center gap-3 shrink-0">
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                className="hidden"
+                                                ref={fileInputRef}
+                                                onChange={handleImageUpload}
+                                            />
+                                            <button
+                                                onClick={() => fileInputRef.current?.click()}
+                                                className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 text-sm font-medium transition-all flex items-center gap-2"
+                                            >
+                                                <Upload className="w-4 h-4 text-primary" />
+                                                {uploadedImage ? 'Change Map Image' : 'Upload Custom Map'}
+                                            </button>
+                                            {uploadedImage && (
+                                                <button
+                                                    onClick={() => {
+                                                        if (uploadedImage) URL.revokeObjectURL(uploadedImage);
+                                                        setUploadedImage(null);
+                                                    }}
+                                                    className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl border border-red-500/20 text-sm font-medium transition-all flex items-center gap-2"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                    Remove Image
+                                                </button>
+                                            )}
+                                        </div>
+
                                         <div
+                                            ref={overlayRef}
                                             className="flex-1 bg-white/5 rounded-2xl border border-white/10 overflow-hidden relative min-h-[400px] cursor-crosshair"
-                                            onClick={handleSimulatedClick}
-                                            onMouseMove={handleSimulatedMouseMove}
-                                            onMouseUp={handleMouseUp}
-                                            onMouseLeave={handleMouseUp}
+                                            onClick={handleMapClick}
+                                            onMouseMove={handleOverlayMouseMove}
+                                            onMouseUp={handleOverlayMouseUp}
+                                            onMouseLeave={handleOverlayMouseUp}
                                         >
                                             <div
                                                 ref={mapContainerRef}
                                                 className="absolute inset-0"
                                                 style={IS_PLACEHOLDER_TOKEN ? {
-                                                    backgroundImage: 'url(/ndvi-field.png)',
+                                                    backgroundImage: `url(${uploadedImage || '/ndvi-field.png'})`,
                                                     backgroundSize: 'contain',
                                                     backgroundPosition: 'center',
                                                     backgroundRepeat: 'no-repeat'
@@ -480,10 +611,9 @@ export function AddFieldModal({ isOpen, onClose, onSubmit }: AddFieldModalProps)
                                                         {formData.boundary.length > 1 && (
                                                             <polyline
                                                                 points={formData.boundary.map(coord => {
-                                                                    const rect = mapContainerRef.current?.getBoundingClientRect();
-                                                                    if (!rect) return "0,0";
-                                                                    const x = ((coord[0] - 44.8) / 0.05 + 0.5) * rect.width;
-                                                                    const y = (-(coord[1] - 41.7) / 0.05 + 0.5) * rect.height;
+                                                                    const el = overlayRef.current;
+                                                                    if (!el) return "0,0";
+                                                                    const { x, y } = coordToPx(coord, el.clientWidth, el.clientHeight);
                                                                     return `${x},${y}`;
                                                                 }).join(" ")}
                                                                 fill={isPolygonClosed ? "rgba(34, 197, 94, 0.3)" : "none"}
@@ -492,44 +622,39 @@ export function AddFieldModal({ isOpen, onClose, onSubmit }: AddFieldModalProps)
                                                                 strokeDasharray={isPolygonClosed ? "0" : "5,5"}
                                                             />
                                                         )}
-                                                        {isPolygonClosed && formData.boundary.length > 2 && (
-                                                            <line
-                                                                x1={((formData.boundary[formData.boundary.length - 1][0] - 44.8) / 0.05 + 0.5) * (mapContainerRef.current?.clientWidth || 0)}
-                                                                y1={(-(formData.boundary[formData.boundary.length - 1][1] - 41.7) / 0.05 + 0.5) * (mapContainerRef.current?.clientHeight || 0)}
-                                                                x2={((formData.boundary[0][0] - 44.8) / 0.05 + 0.5) * (mapContainerRef.current?.clientWidth || 0)}
-                                                                y2={(-(formData.boundary[0][1] - 41.7) / 0.05 + 0.5) * (mapContainerRef.current?.clientHeight || 0)}
-                                                                stroke="#22c55e"
-                                                                strokeWidth="3"
-                                                            />
-                                                        )}
+                                                        {isPolygonClosed && formData.boundary.length > 2 && (() => {
+                                                            const el = overlayRef.current;
+                                                            if (!el) return null;
+                                                            const w = el.clientWidth;
+                                                            const h = el.clientHeight;
+                                                            const last = coordToPx(formData.boundary[formData.boundary.length - 1], w, h);
+                                                            const first = coordToPx(formData.boundary[0], w, h);
+                                                            return (
+                                                                <line
+                                                                    x1={last.x} y1={last.y}
+                                                                    x2={first.x} y2={first.y}
+                                                                    stroke="#22c55e"
+                                                                    strokeWidth="3"
+                                                                />
+                                                            );
+                                                        })()}
                                                     </svg>
                                                     {formData.boundary.map((coord, i) => {
-                                                        const rect = mapContainerRef.current?.getBoundingClientRect();
-                                                        if (!rect) return null;
-                                                        const x = ((coord[0] - 44.8) / 0.05 + 0.5) * rect.width;
-                                                        const y = (-(coord[1] - 41.7) / 0.05 + 0.5) * rect.height;
+                                                        const el = overlayRef.current;
+                                                        if (!el) return null;
+                                                        const { x, y } = coordToPx(coord, el.clientWidth, el.clientHeight);
 
                                                         return (
                                                             <div
                                                                 key={i}
                                                                 className={cn(
-                                                                    "absolute w-5 h-5 -ml-2.5 -mt-2.5 rounded-full border-2 border-white shadow-xl flex items-center justify-center transition-all",
+                                                                    "absolute w-5 h-5 -ml-2.5 -mt-2.5 rounded-full border-2 border-white shadow-xl flex items-center justify-center",
                                                                     i === 0 ? "bg-red-500 scale-125 z-30 cursor-pointer pointer-events-auto" : "bg-green-500 scale-100 z-20 cursor-move pointer-events-auto",
-                                                                    draggedPinIndex === i && "scale-125 shadow-2xl z-40"
+                                                                    dragIdx === i && "scale-125 shadow-2xl z-40"
                                                                 )}
                                                                 style={{ left: x, top: y }}
-                                                                onMouseDown={(e) => handlePinMouseDown(e, i)}
-                                                                onClick={(e) => {
-                                                                    if (i === 0 && formData.boundary.length >= 3) {
-                                                                        e.stopPropagation();
-                                                                        setIsPolygonClosed(true);
-                                                                        const polygonBound = [...formData.boundary, formData.boundary[0]];
-                                                                        const polygon = turf.polygon([polygonBound]);
-                                                                        const areaSqM = turf.area(polygon);
-                                                                        const acres = areaToAcres(areaSqM);
-                                                                        setFormData(prev => ({ ...prev, acres: acres.toFixed(1) }));
-                                                                    }
-                                                                }}
+                                                                onMouseDown={(e) => handlePinDown(e, i, coord)}
+                                                                onClick={(e) => handlePinClick(e, i)}
                                                             >
                                                                 {i === 0 && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
                                                             </div>

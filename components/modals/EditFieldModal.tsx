@@ -39,15 +39,24 @@ const EditFieldModal = ({ isOpen, onClose, field, onUpdate }: EditFieldModalProp
     const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
     const [viewportCenter, setViewportCenter] = useState<[number, number] | null>(null);
 
-    // Reset state when modal opens
+    // Reset state when modal opens — strip duplicate closing point from saved coordinates
     useEffect(() => {
         if (isOpen) {
-            setBoundary(field.coordinates);
+            let coords = field.coordinates;
+            // If the polygon is closed, the last point === first point; strip it for editing
+            if (
+                coords.length > 2 &&
+                coords[0][0] === coords[coords.length - 1][0] &&
+                coords[0][1] === coords[coords.length - 1][1]
+            ) {
+                coords = coords.slice(0, -1);
+            }
+            setBoundary(coords);
             setAcres(field.acres.toString());
             setIsPolygonClosed(true);
             setViewportCenter(IS_PLACEHOLDER_TOKEN
                 ? [44.8, 41.7]
-                : (field.coordinates.length > 0 ? field.coordinates[0] : [44.8, 41.7])
+                : (coords.length > 0 ? coords[0] : [44.8, 41.7])
             );
         }
     }, [isOpen, field]);
@@ -202,48 +211,78 @@ const EditFieldModal = ({ isOpen, onClose, field, onUpdate }: EditFieldModalProp
         }
     }, [boundary, isPolygonClosed]);
 
-    const [draggedPinIndex, setDraggedPinIndex] = useState<number | null>(null);
+    // ---- PIN SYSTEM (rewritten — delta-based dragging) ----
+    const overlayRef = useRef<HTMLDivElement>(null);
+    const [dragIdx, setDragIdx] = useState<number | null>(null);
+    const dragStartRef = useRef<{ mx: number; my: number; coord: [number, number] } | null>(null);
+    const wasDragRef = useRef(false);
 
-    // Simulation Mode Logic
-    const handleSimulatedClick = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!IS_PLACEHOLDER_TOKEN || !mapContainerRef.current || isPolygonClosed || draggedPinIndex !== null) return;
-
-        const rect = mapContainerRef.current.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-
-
-        const lng = 44.8 + (x / rect.width - 0.5) * 0.05;
-        const lat = 41.7 - (y / rect.height - 0.5) * 0.05;
-
-        setBoundary(prev => [...prev, [lng, lat]]);
+    const pxToCoord = (px: number, py: number, w: number, h: number): [number, number] => {
+        const lng = 44.8 + (px / w - 0.5) * 0.05;
+        const lat = 41.7 - (py / h - 0.5) * 0.05;
+        return [lng, lat];
     };
 
-    const handleSimulatedMouseMove = (e: React.MouseEvent) => {
-        if (draggedPinIndex === null || !mapContainerRef.current || boundary.length === 0) return;
+    const coordToPx = (coord: [number, number], w: number, h: number): { x: number; y: number } => {
+        const x = ((coord[0] - 44.8) / 0.05 + 0.5) * w;
+        const y = (-(coord[1] - 41.7) / 0.05 + 0.5) * h;
+        return { x, y };
+    };
 
-        const rect = mapContainerRef.current.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+    // Click on empty map → add new pin
+    const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (!IS_PLACEHOLDER_TOKEN || isPolygonClosed || dragIdx !== null) return;
+        const el = overlayRef.current;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const newCoord = pxToCoord(e.clientX - rect.left, e.clientY - rect.top, rect.width, rect.height);
+        setBoundary(prev => [...prev, newCoord]);
+    };
 
+    // Pin mousedown → start drag
+    const handlePinDown = (e: React.MouseEvent, idx: number, coord: [number, number]) => {
+        e.stopPropagation();
+        e.preventDefault();
+        setDragIdx(idx);
+        wasDragRef.current = false;
+        dragStartRef.current = { mx: e.clientX, my: e.clientY, coord: [...coord] };
+    };
 
-        const lng = 44.8 + (x / rect.width - 0.5) * 0.05;
-        const lat = 41.7 - (y / rect.height - 0.5) * 0.05;
+    // Mouse move → drag pin by delta
+    const handleOverlayMouseMove = (e: React.MouseEvent) => {
+        if (dragIdx === null || !dragStartRef.current || !overlayRef.current) return;
+        const dx = e.clientX - dragStartRef.current.mx;
+        const dy = e.clientY - dragStartRef.current.my;
+        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) wasDragRef.current = true;
+        if (!wasDragRef.current) return;
+
+        const rect = overlayRef.current.getBoundingClientRect();
+        const newLng = dragStartRef.current.coord[0] + (dx / rect.width) * 0.05;
+        const newLat = dragStartRef.current.coord[1] - (dy / rect.height) * 0.05;
 
         setBoundary(prev => {
             const next = [...prev];
-            next[draggedPinIndex] = [lng, lat];
+            next[dragIdx] = [newLng, newLat];
             return next;
         });
     };
 
-    const handlePinMouseDown = (e: React.MouseEvent, index: number) => {
-        e.stopPropagation();
-        setDraggedPinIndex(index);
+    // Mouse up → end drag
+    const handleOverlayMouseUp = () => {
+        if (dragIdx !== null) {
+            setTimeout(() => { wasDragRef.current = false; }, 100);
+        }
+        setDragIdx(null);
+        dragStartRef.current = null;
     };
 
-    const handleMouseUp = () => {
-        setDraggedPinIndex(null);
+    // Pin click → close polygon (click on first pin)
+    const handlePinClick = (e: React.MouseEvent, idx: number) => {
+        e.stopPropagation();
+        if (wasDragRef.current) return;
+        if (idx === 0 && boundary.length >= 3 && !isPolygonClosed) {
+            setIsPolygonClosed(true);
+        }
     };
 
     const handleSave = async () => {
@@ -285,19 +324,21 @@ const EditFieldModal = ({ isOpen, onClose, field, onUpdate }: EditFieldModalProp
                     {/* Map Area */}
                     <div className="flex-1 relative min-h-[300px] border-r border-white/10">
                         <div
-                            ref={mapContainerRef}
+                            ref={overlayRef}
                             className="absolute inset-0 bg-black/40"
-                            onClick={handleSimulatedClick}
-                            onMouseMove={handleSimulatedMouseMove}
-                            onMouseUp={handleMouseUp}
-                            onMouseLeave={handleMouseUp}
+                            onClick={handleMapClick}
+                            onMouseMove={handleOverlayMouseMove}
+                            onMouseUp={handleOverlayMouseUp}
+                            onMouseLeave={handleOverlayMouseUp}
                             style={IS_PLACEHOLDER_TOKEN ? {
                                 backgroundImage: 'url(/ndvi-field.png)',
                                 backgroundSize: 'contain',
                                 backgroundPosition: 'center',
                                 backgroundRepeat: 'no-repeat'
                             } : {}}
-                        />
+                        >
+                            <div ref={mapContainerRef} className="absolute inset-0" />
+                        </div>
 
                         {/* Simulation Pins */}
                         {IS_PLACEHOLDER_TOKEN && (
@@ -306,10 +347,9 @@ const EditFieldModal = ({ isOpen, onClose, field, onUpdate }: EditFieldModalProp
                                     {boundary.length > 1 && (
                                         <polyline
                                             points={boundary.map(coord => {
-                                                const rect = mapContainerRef.current?.getBoundingClientRect();
-                                                if (!rect) return "0,0";
-                                                const x = ((coord[0] - 44.8) / 0.05 + 0.5) * rect.width;
-                                                const y = (-(coord[1] - 41.7) / 0.05 + 0.5) * rect.height;
+                                                const el = overlayRef.current;
+                                                if (!el) return "0,0";
+                                                const { x, y } = coordToPx(coord, el.clientWidth, el.clientHeight);
                                                 return `${x},${y}`;
                                             }).join(" ")}
                                             fill={isPolygonClosed ? "rgba(34, 197, 94, 0.2)" : "none"}
@@ -318,12 +358,27 @@ const EditFieldModal = ({ isOpen, onClose, field, onUpdate }: EditFieldModalProp
                                             strokeDasharray={isPolygonClosed ? "0" : "5,5"}
                                         />
                                     )}
+                                    {isPolygonClosed && boundary.length > 2 && (() => {
+                                        const el = overlayRef.current;
+                                        if (!el) return null;
+                                        const w = el.clientWidth;
+                                        const h = el.clientHeight;
+                                        const last = coordToPx(boundary[boundary.length - 1], w, h);
+                                        const first = coordToPx(boundary[0], w, h);
+                                        return (
+                                            <line
+                                                x1={last.x} y1={last.y}
+                                                x2={first.x} y2={first.y}
+                                                stroke="#22c55e"
+                                                strokeWidth="3"
+                                            />
+                                        );
+                                    })()}
                                 </svg>
                                 {boundary.map((coord, i) => {
-                                    const rect = mapContainerRef.current?.getBoundingClientRect();
-                                    if (!rect) return null;
-                                    const x = ((coord[0] - 44.8) / 0.05 + 0.5) * rect.width;
-                                    const y = (-(coord[1] - 41.7) / 0.05 + 0.5) * rect.height;
+                                    const el = overlayRef.current;
+                                    if (!el) return null;
+                                    const { x, y } = coordToPx(coord, el.clientWidth, el.clientHeight);
 
                                     return (
                                         <div
@@ -331,11 +386,12 @@ const EditFieldModal = ({ isOpen, onClose, field, onUpdate }: EditFieldModalProp
                                             className={cn(
                                                 "absolute w-4 h-4 -ml-2 -mt-2 rounded-full border-2 border-white shadow-lg transition-all",
                                                 i === 0 ? "bg-red-500 scale-125 z-10" : "bg-green-500",
-                                                draggedPinIndex === i && "scale-150 shadow-2xl z-50 cursor-grabbing",
+                                                dragIdx === i && "scale-150 shadow-2xl z-50 cursor-grabbing",
                                                 "cursor-move pointer-events-auto"
                                             )}
                                             style={{ left: x, top: y }}
-                                            onMouseDown={(e) => handlePinMouseDown(e, i)}
+                                            onMouseDown={(e) => handlePinDown(e, i, coord)}
+                                            onClick={(e) => handlePinClick(e, i)}
                                         />
                                     );
                                 })}

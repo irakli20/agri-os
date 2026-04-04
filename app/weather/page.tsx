@@ -48,10 +48,11 @@ export default function WeatherPage() {
 
     return (
         <AppShell>
-            <div className="p-6 space-y-6 overflow-y-auto h-full">
+            <div className="page-shell">
                 {/* Header */}
-                <div className="flex items-center justify-between">
+                <div className="page-header">
                     <div>
+                        <p className="page-header-meta">Agronomic Weather</p>
                         <h1 className="text-3xl font-bold">Weather Intelligence</h1>
                         <p className="text-muted-foreground mt-1">
                             Hourly forecasts, spray windows, and agricultural insights
@@ -69,7 +70,7 @@ export default function WeatherPage() {
                 {WEATHER_ALERTS.length > 0 && (
                     <div className="space-y-2">
                         {WEATHER_ALERTS.map(alert => (
-                            <div key={alert.id} className="glass-panel rounded-xl p-4 border-l-4 border-yellow-500">
+                            <div key={alert.id} className="card-soft rounded-2xl p-4 border-l-4 border-yellow-500">
                                 <div className="flex items-start gap-3">
                                     <AlertTriangle className="w-5 h-5 text-yellow-400 shrink-0 mt-0.5" />
                                     <div className="flex-1">
@@ -89,7 +90,7 @@ export default function WeatherPage() {
 
                 {/* Spray Windows Timeline */}
                 {sprayWindows.length > 0 && (
-                    <div className="glass-panel rounded-xl p-6">
+                    <div className="card-soft rounded-2xl p-6">
                         <div className="flex items-center gap-2 mb-4">
                             <Sprout className="w-5 h-5 text-green-400" />
                             <h2 className="text-lg font-semibold">Optimal Spray Windows</h2>
@@ -110,7 +111,7 @@ export default function WeatherPage() {
                                             )}
                                             style={{ width: `${window.score}%` }}
                                         >
-                                            {window.recommendation}
+                                            {window.reason}
                                         </div>
                                     </div>
                                     <div className="w-16 text-right text-sm font-bold">
@@ -123,7 +124,7 @@ export default function WeatherPage() {
                 )}
 
                 {/* Hourly Forecast Table */}
-                <div className="glass-panel rounded-xl overflow-hidden">
+                <div className="card-soft rounded-2xl overflow-hidden">
                     <div className="p-4 border-b border-white/10">
                         <div className="flex items-center gap-2">
                             <Calendar className="w-5 h-5 text-blue-400" />
@@ -165,7 +166,7 @@ export default function WeatherPage() {
                                             {hour.windSpeed} <span className="text-xs text-muted-foreground">{hour.windDirection}</span>
                                         </div>
                                         <div className="flex items-center gap-1 text-sm">
-                                            <Droplets className="w-4 h-4 text-cyan-400" />
+                                            <Droplets className="w-4 h-4 text-secondary" />
                                             {hour.humidity}%
                                         </div>
                                         <div className="flex items-center gap-1 text-sm">
@@ -197,13 +198,13 @@ export default function WeatherPage() {
                                                 <div
                                                     className={cn(
                                                         "h-full rounded-full",
-                                                        getSprayScoreColor(hour.sprayScore).replace('text-', 'bg-').replace('-400', '-500')
+                                                        getSprayScoreColor(hour.sprayScore || 0).replace('text-', 'bg-').replace('-400', '-500')
                                                     )}
-                                                    style={{ width: `${hour.sprayScore}%` }}
+                                                    style={{ width: `${hour.sprayScore || 0}%` }}
                                                 />
                                             </div>
-                                            <span className={cn("text-xs font-bold", getSprayScoreColor(hour.sprayScore))}>
-                                                {hour.sprayScore}
+                                            <span className={cn("text-xs font-bold", getSprayScoreColor(hour.sprayScore || 0))}>
+                                                {hour.sprayScore || 0}
                                             </span>
                                         </div>
                                     </div>
@@ -216,7 +217,7 @@ export default function WeatherPage() {
                 {/* Agricultural Insights */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Drought Prediction */}
-                    <div className="glass-panel rounded-xl p-5">
+                    <div className="card-soft rounded-2xl p-5">
                         <div className="flex items-center gap-2 mb-4">
                             <TrendingUp className="w-5 h-5 text-orange-400" />
                             <h3 className="font-semibold">Drought Prediction</h3>
@@ -266,16 +267,16 @@ export default function WeatherPage() {
                     </div>
 
                     {/* Quick Stats */}
-                    <div className="glass-panel rounded-xl p-5">
+                    <div className="card-soft rounded-2xl p-5">
                         <div className="flex items-center gap-2 mb-4">
                             <Eye className="w-5 h-5 text-purple-400" />
-                            <h3 className="font-semibold">Today's Conditions</h3>
+                            <h3 className="font-semibold">Today&apos;s Conditions</h3>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="bg-white/5 rounded-lg p-3">
                                 <div className="text-xs text-muted-foreground mb-1">High / Low</div>
                                 <div className="text-lg font-bold">
-                                    {Math.max(...hourlyForecast.map(h => h.temp))}° / {Math.min(...hourlyForecast.map(h => h.temp))}°
+                                    {Math.max(...hourlyForecast.map(h => h.temperature))}° / {Math.min(...hourlyForecast.map(h => h.temperature))}°
                                 </div>
                             </div>
                             <div className="bg-white/5 rounded-lg p-3">

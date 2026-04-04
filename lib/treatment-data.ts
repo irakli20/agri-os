@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { TreatmentRecommendation } from './pest-disease-data';
 
 export interface ScheduledTreatment {

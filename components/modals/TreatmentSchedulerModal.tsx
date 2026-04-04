@@ -15,7 +15,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { generateHourlyForecast, getSprayWindows } from '@/lib/weather-data';
-import type { TreatmentRecommendation } from '@/lib/pest-disease-data';
+// Local type – the pest-disease-data arrays are typed as any[]
+type TreatmentRecommendation = Record<string, any>;
 import { TreatmentStorage } from '@/lib/treatment-data';
 
 interface TreatmentSchedulerModalProps {
@@ -211,7 +212,7 @@ export function TreatmentSchedulerModal({
                                                         <Clock className="w-5 h-5 text-blue-400" />
                                                         <div>
                                                             <div className="font-medium">{window.start} - {window.end}</div>
-                                                            <div className="text-sm text-muted-foreground">{window.recommendation}</div>
+                                                            <div className="text-sm text-muted-foreground">{window.reason}</div>
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-3">
@@ -252,7 +253,7 @@ export function TreatmentSchedulerModal({
                                 <div>
                                     <label className="block text-sm font-medium mb-3">Select Product</label>
                                     <div className="space-y-2">
-                                        {recommendation.products.map((product, i) => (
+                                        {recommendation.products.map((product: Record<string, any>, i: number) => (
                                             <div
                                                 key={i}
                                                 onClick={() => setSelectedProduct(i)}

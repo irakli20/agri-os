@@ -1,6 +1,6 @@
 {
     "compilerOptions": {
-        "target": "ES2017",
+        "target": "esnext",
         "lib": [
             "dom",
             "dom.iterable",
@@ -9,6 +9,7 @@
         "allowJs": true,
         "skipLibCheck": true,
         "strict": true,
+        "forceConsistentCasingInFileNames": true,
         "noEmit": true,
         "esModuleInterop": true,
         "module": "esnext",
@@ -17,11 +18,7 @@
         "isolatedModules": true,
         "jsx": "preserve",
         "incremental": true,
-        "plugins": [
-            {
-                "name": "next"
-            }
-        ],
+        "baseUrl": ".",
         "paths": {
             "@/*": [
                 "./*"
@@ -38,7 +35,13 @@
             "@/app/*": [
                 "./app/*"
             ]
-        }
+        },
+        "plugins": [
+            {
+                "name": "next"
+            }
+        ],
+        "types": []
     },
     "include": [
         "next-env.d.ts",
@@ -47,7 +50,6 @@
         ".next/types/**/*.ts"
     ],
     "exclude": [
-        "node_modules",
-        "agri-os"
+        "node_modules"
     ]
 }

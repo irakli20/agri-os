@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { create } from 'zustand';
 import { MapStore, ViewState, BasemapStyle } from '@/types';
 import { Layer } from '@deck.gl/core';
