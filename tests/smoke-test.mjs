@@ -14,6 +14,11 @@ async function fetchWithTimeout(url, options = {}) {
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Could not reach ${url}: ${message}. Start the app with "npm run dev -- -p 3017" or set SMOKE_BASE_URL.`
+    );
   } finally {
     clearTimeout(timer);
   }

@@ -15,7 +15,8 @@ import {
     Zap,
     Star
 } from 'lucide-react';
-import { NotificationBell } from '@/components/ui/NotificationsPanel';
+import { NotificationBell, NotificationsPanel } from '@/components/ui/NotificationsPanel';
+import { WeeklyPlanningModal } from '@/components/modals/WeeklyPlanningModal';
 
 interface GameShellProps {
     children: React.ReactNode;
@@ -25,6 +26,7 @@ interface GameShellProps {
 
 export function GameShell({ children, hideSidebar, title }: GameShellProps) {
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
     const [mounted, setMounted] = useState(false);
     const pathname = usePathname();
     const router = useRouter();
@@ -33,7 +35,9 @@ export function GameShell({ children, hideSidebar, title }: GameShellProps) {
         gameMode,
         toggleGameMode,
         players,
-        currentPlayerId
+        currentPlayerId,
+        isWeeklyPlannerOpen,
+        closeWeeklyPlanner
     } = useGameStore();
 
     const player = players.find(p => p.id === currentPlayerId);
@@ -151,7 +155,7 @@ export function GameShell({ children, hideSidebar, title }: GameShellProps) {
                                     </div>
                                 </div>
                             )}
-                            <NotificationBell onClick={() => { }} />
+                            <NotificationBell onClick={() => setIsNotificationsOpen((open) => !open)} />
                         </div>
                     </div>
                 </header>
@@ -160,6 +164,15 @@ export function GameShell({ children, hideSidebar, title }: GameShellProps) {
                     {children}
                 </div>
             </main>
+
+            <NotificationsPanel
+                isOpen={isNotificationsOpen}
+                onClose={() => setIsNotificationsOpen(false)}
+            />
+            <WeeklyPlanningModal
+                isOpen={isWeeklyPlannerOpen}
+                onClose={closeWeeklyPlanner}
+            />
         </div>
     );
 }

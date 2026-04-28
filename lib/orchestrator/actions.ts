@@ -820,26 +820,29 @@ export function logActionResult(
   });
 
   // Store in localStorage for persistence
-  const logs = JSON.parse(localStorage.getItem('agri-os-action-logs') || '[]');
-  logs.push({
-    timestamp,
-    actionId,
-    decisionId,
-    success,
-    details,
-  });
-  
-  // Keep last 1000 logs
-  if (logs.length > 1000) {
-    logs.shift();
+  if (typeof window !== 'undefined') {
+    const logs = JSON.parse(localStorage.getItem('agri-os-action-logs') || '[]');
+    logs.push({
+      timestamp,
+      actionId,
+      decisionId,
+      success,
+      details,
+    });
+    
+    // Keep last 1000 logs
+    if (logs.length > 1000) {
+      logs.shift();
+    }
+    
+    localStorage.setItem('agri-os-action-logs', JSON.stringify(logs));
   }
-  
-  localStorage.setItem('agri-os-action-logs', JSON.stringify(logs));
 }
 
 export function getActionLogs(
   filter?: { decisionId?: string; success?: boolean; limit?: number }
 ): Array<{ timestamp: string; actionId: string; decisionId: string; success: boolean; details: any }> {
+  if (typeof window === 'undefined') return [];
   const logs = JSON.parse(localStorage.getItem('agri-os-action-logs') || '[]');
   
   let filtered = logs;

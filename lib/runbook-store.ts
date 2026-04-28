@@ -210,7 +210,13 @@ export const useRunbookStore = create<RunbookStore>()(
         }),
         {
             name: 'agri-os-runbook-storage',
-            storage: createJSONStorage(() => localStorage),
+            storage: createJSONStorage(() =>
+                typeof window !== 'undefined' ? localStorage : {
+                    getItem: () => null,
+                    setItem: () => undefined,
+                    removeItem: () => undefined,
+                }
+            ),
             partialize: (state) => ({
                 activeRunbookId: state.activeRunbookId,
                 sessions: state.sessions,

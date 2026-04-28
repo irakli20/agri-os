@@ -7,13 +7,13 @@ import { Widget } from '@/components/dashboard/DashboardGrid';
 import { useFieldStore } from '@/lib/field-store';
 import { useGameStore } from '@/lib/game-store';
 import { cn } from '@/lib/utils';
+import { getFieldDisplaySemantics } from '@/lib/field-display';
 
 export function FieldHealthCard() {
-    const { getActiveFields, deleteField } = useFieldStore();
+    const { getFieldsForMode, deleteField } = useFieldStore();
     const { gameMode } = useGameStore();
 
-    // Get fields based on active mode
-    const fields = getActiveFields(gameMode);
+    const fields = getFieldsForMode(gameMode ? 'strategy' : 'demo');
 
     const [fieldToDelete, setFieldToDelete] = useState<string | null>(null);
 
@@ -61,7 +61,10 @@ export function FieldHealthCard() {
                             )}
                         </div>
                     ) : (
-                        fields.map((field) => (
+                        fields.map((field) => {
+                            const display = getFieldDisplaySemantics(field);
+
+                            return (
                             <Link
                                 key={field.id}
                                 href={`/fields/${field.id}`}
@@ -92,7 +95,7 @@ export function FieldHealthCard() {
                                             <h4 className="text-sm font-semibold text-white drop-shadow-lg">
                                                 {field.name}
                                             </h4>
-                                            <p className="text-[10px] text-white/80 drop-shadow">{field.crop}</p>
+                                            <p className="text-[10px] text-white/80 drop-shadow">{display.displayCropLabel}</p>
                                         </div>
 
                                         {field.healthStatus === 'critical' && (
@@ -111,9 +114,9 @@ export function FieldHealthCard() {
                                     <div className="flex items-end justify-between">
                                         <div>
                                             <div className="text-2xl font-bold text-white drop-shadow-lg">
-                                                {getHealthScore(field.ndviScore)}
+                                                {display.scoreValue}
                                             </div>
-                                            <div className="text-[10px] text-white/80 drop-shadow">NDVI Score</div>
+                                            <div className="text-[10px] text-white/80 drop-shadow">{display.scoreLabel}</div>
                                         </div>
 
                                         <div className="flex flex-col items-end gap-1">
@@ -133,12 +136,12 @@ export function FieldHealthCard() {
                                                 )}
                                                 {field.healthStatus}
                                             </div>
-                                            <span className="text-[9px] text-white/60 drop-shadow">{field.acres} acres</span>
+                                            <span className="text-[9px] text-white/60 drop-shadow">{field.acres} acres • {display.stageLabel}</span>
                                         </div>
                                     </div>
                                 </div>
                             </Link>
-                        ))
+                        )})
                     )}
                 </div>
 

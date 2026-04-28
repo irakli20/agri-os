@@ -11,19 +11,34 @@ import { useGameStore } from '@/lib/game-store';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { getRunbookTemplateForOperation } from '@/lib/runbooks-data';
+import { MOCK_SUPPLY_PRODUCTS } from '@/lib/supplies-store';
+import { InventoryItem } from '@/lib/game-store';
 
 export function TaskListCard() {
     const router = useRouter();
-    const { fields, gameFields } = useFieldStore();
-    const { gameMode, weeklyChallenges, performFieldOperation, completeChallenge } = useGameStore();
+    const { getDemoFields, getStrategyFields } = useFieldStore();
+    const { gameMode, weeklyChallenges, performFieldOperation, completeChallenge, buySupplies } = useGameStore();
+    const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const fields = getDemoFields();
+    const gameFields = getStrategyFields();
     const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
     const getFieldName = (fieldId: string) => fields.find(f => f.id === fieldId)?.name || 'Unknown';
     const getDroneName = (droneId: string) => DRONES.find(d => d.id === droneId)?.model || 'Unknown';
     const openChallenges = weeklyChallenges.filter((c) => c.status === 'open').slice(0, 5);
 
     return (
-        <Widget title="Upcoming Tasks" className="col-span-1">
+        <Widget title={gameMode ? "Weekly Priorities" : "Upcoming Tasks"} className="col-span-1">
             <div className="space-y-2">
+                {actionMessage && (
+                    <div className={cn(
+                        "rounded-lg border p-2 text-xs mb-2",
+                        actionMessage.type === 'success'
+                            ? "bg-green-500/10 border-green-500/30 text-green-300"
+                            : "bg-red-500/10 border-red-500/30 text-red-300"
+                    )}>
+                        {actionMessage.text}
+                    </div>
+                )}
                 {gameMode ? openChallenges.map((challenge) => {
                     const runbookTemplateId = getRunbookTemplateForOperation(challenge.operationId);
                     return (
@@ -83,11 +98,36 @@ export function TaskListCard() {
                                 )}
                                 <button
                                     onClick={() => {
-                                        if (challenge.operationId && challenge.fieldId) {
-                                            if (challenge.operationId === 'buy-seeds') {
-                                                router.push('/game/marketplace/supplies');
-                                                return;
+                                        if (challenge.operationId === 'buy-seeds' || challenge.operationId === 'buy-fertilizer' || challenge.operationId === 'buy-chemical' || challenge.operationId === 'buy-fuel') {
+                                            const field = challenge.fieldId ? gameFields.find(f => f.id === challenge.fieldId) : null;
+                                            const category = challenge.operationId === 'buy-seeds' ? 'seeds' : 
+                                                            challenge.operationId === 'buy-fertilizer' ? 'fertilizer' : 
+                                                            challenge.operationId === 'buy-fuel' ? 'fuel' : 'pesticide';
+                                            const products = MOCK_SUPPLY_PRODUCTS.filter(p => p.category === category && p.inStock);
+                                            const product = products.find(p => p.isCornRelated) || products[0];
+                                            if (product) {
+                                                const item: InventoryItem = {
+                                                    id: product.id,
+                                                    name: product.name,
+                                                    category: category === 'seeds' ? 'seed' : 
+                                                              category === 'fertilizer' ? 'fertilizer' : 
+                                                              category === 'fuel' ? 'fuel' : 'chemical',
+                                                    quantity: 1,
+                                                    unit: product.unit,
+                                                };
+                                                const result = buySupplies(item, product.price);
+                                                if (result.success) {
+                                                    completeChallenge(challenge.id);
+                                                    setActionMessage({ type: 'success', text: `Purchased ${product.name}!` });
+                                                } else {
+                                                    setActionMessage({ type: 'error', text: result.error || 'Purchase failed.' });
+                                                }
+                                            } else {
+                                                setActionMessage({ type: 'error', text: 'No items available.' });
                                             }
+                                            return;
+                                        }
+                                        if (challenge.operationId && challenge.fieldId) {
                                             if (challenge.operationId.startsWith('serv-')) {
                                                 router.push(`/game/marketplace/services?fieldId=${challenge.fieldId}`);
                                                 return;
@@ -178,24 +218,28 @@ export function TaskListCard() {
 
             <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">
-                    Pending Tasks: {gameMode ? openChallenges.length : TASKS.filter(t => t.status === 'pending').length}
+                    {gameMode ? 'Open Priorities' : 'Pending Tasks'}: {gameMode ? openChallenges.length : TASKS.filter(t => t.status === 'pending').length}
                 </span>
-                <button
-                    onClick={() => setIsCreateTaskOpen(true)}
-                    className="flex items-center gap-1 text-primary hover:text-primary/90 transition-colors"
-                >
-                    <Plus className="w-3 h-3" />
-                    Add Task
-                </button>
+                {!gameMode && (
+                    <button
+                        onClick={() => setIsCreateTaskOpen(true)}
+                        className="flex items-center gap-1 text-primary hover:text-primary/90 transition-colors"
+                    >
+                        <Plus className="w-3 h-3" />
+                        Add Task
+                    </button>
+                )}
             </div>
 
-            <CreateTaskModal
-                isOpen={isCreateTaskOpen}
-                onClose={() => setIsCreateTaskOpen(false)}
-                onSubmit={(task) => {
-                    console.log('Task created:', task);
-                }}
-            />
+            {!gameMode && (
+                <CreateTaskModal
+                    isOpen={isCreateTaskOpen}
+                    onClose={() => setIsCreateTaskOpen(false)}
+                    onSubmit={(task) => {
+                        console.log('Task created:', task);
+                    }}
+                />
+            )}
         </Widget>
     );
 }

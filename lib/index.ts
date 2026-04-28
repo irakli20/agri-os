@@ -641,6 +641,7 @@ export type {
 } from './supplies-store';
 
 export * from './mock-data';
+export * from './corn-challenges';
 export * from './marketplace-data';
 export * from './inventory-data';
 export * from './equipment-data';

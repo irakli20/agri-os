@@ -12,7 +12,8 @@ import {
     Plus
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { FIELDS } from '@/lib/mock-data';
+import { useFieldStore } from '@/lib/field-store';
+import { useGameStore } from '@/lib/game-store';
 import {
     MOCK_IMAGE_UPLOADS,
     IdentificationResult,
@@ -27,6 +28,9 @@ interface ImageUploadModalProps {
 }
 
 export function ImageUploadModal({ isOpen, onClose, preselectedFieldId }: ImageUploadModalProps) {
+    const { getFieldsForMode } = useFieldStore();
+    const { gameMode } = useGameStore();
+    const activeFields = getFieldsForMode(gameMode ? 'strategy' : 'demo');
     const [selectedFieldId, setSelectedFieldId] = useState<string>(preselectedFieldId || '');
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -143,10 +147,11 @@ export function ImageUploadModal({ isOpen, onClose, preselectedFieldId }: ImageU
                             <select
                                 value={selectedFieldId}
                                 onChange={(e) => setSelectedFieldId(e.target.value)}
-                                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                disabled={activeFields.length === 0}
+                                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                <option value="">Choose a field...</option>
-                                {FIELDS.map(field => (
+                                <option value="">{activeFields.length === 0 ? 'No fields available in this mode' : 'Choose a field...'}</option>
+                                {activeFields.map(field => (
                                     <option key={field.id} value={field.id}>
                                         {field.name} - {field.crop} ({field.acres} acres)
                                     </option>

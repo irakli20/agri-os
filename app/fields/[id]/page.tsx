@@ -11,7 +11,7 @@ import {
 import {
     ArrowLeft, Layers, MapPin, Droplets, Thermometer,
     AlertTriangle, Download,
-    Zap, Target, GitCompare, Bug, Calculator, User, CheckCircle, Edit3, X, Camera, History, Undo2, Trash2, Bot, Gauge, ShieldAlert, ArrowRightCircle, SlidersHorizontal, MoreHorizontal, LayoutGrid, Map as MapIcon, List, FlaskConical, RefreshCw
+    Zap, Target, GitCompare, Bug, Calculator, User, CheckCircle, Edit3, X, Camera, History, Undo2, Trash2, Bot, Gauge, ShieldAlert, ArrowRightCircle, SlidersHorizontal, MoreHorizontal, LayoutGrid, Map as MapIcon, List, FlaskConical, RefreshCw, Leaf, Droplet
 } from 'lucide-react';
 import { ScoutingHistoryModal } from '@/components/modals/ScoutingHistoryModal';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
@@ -26,12 +26,13 @@ import { ScoutingReportModal } from '@/components/modals/ScoutingReportModal';
 import { PlantCountModal } from '@/components/modals/PlantCountModal';
 import { ImageUploadModal } from '@/components/modals/ImageUploadModal';
 import { FieldStatusPanel } from '@/components/game/FieldStatusPanel';
+import { strategyActionClass } from '@/components/game/strategy-ui';
 import { BiomemakersService } from '@/lib/services/biomemakers';
 
 import { ScoutingStorage, type ScoutingMission } from '@/lib/scouting-data';
 import { getFieldKpiSnapshots, type FieldKpiSnapshot } from '@/lib/orchestrator/kpi';
 import Image from 'next/image';
-import { getFieldOverlay } from '@/lib/field-overlay-generator';
+import { getFieldOverlay, svgToDataUrl } from '@/lib/field-overlay-generator';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import * as turf from '@turf/turf';
@@ -51,16 +52,18 @@ const LAYER_IMAGES: Record<string, string> = {
 };
 
 const PROBLEM_OVERLAYS = [
-    { id: 'pest', name: 'Pest Infestation', color: 'text-red-400' },
-    { id: 'disease', name: 'Disease Spread', color: 'text-purple-400' },
-    { id: 'weed', name: 'Weed Pressure', color: 'text-green-400' },
+    { id: 'pest', name: 'Pest Infestation', color: 'text-red-400', icon: 'Bug' },
+    { id: 'disease', name: 'Disease Spread', color: 'text-purple-400', icon: 'Droplet' },
+    { id: 'weed', name: 'Weed Pressure', color: 'text-green-400', icon: 'Leaf' },
+    { id: 'nutrient', name: 'Nutrient Deficiency', color: 'text-yellow-400', icon: 'FlaskConical' },
+    { id: 'drought', name: 'Drought Stress', color: 'text-blue-400', icon: 'Droplets' },
 ];
 
 import { useGameStore } from '@/lib/game-store';
 import { useOrchestratorStore } from '@/lib/orchestrator';
 
 export default function FieldDetailPage({ params }: { params: { id: string } }) {
-    const { getActiveFields, updateField, deleteField } = useFieldStore();
+    const { getFieldsForMode, updateField, deleteField } = useFieldStore();
     const {
         gameMode,
         abandonField,
@@ -73,7 +76,7 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
     } = useGameStore();
 
     // Get fields based on active mode
-    const activeFields = getActiveFields(gameMode);
+    const activeFields = getFieldsForMode(gameMode ? 'strategy' : 'demo');
     const field = activeFields.find(f => f.id === params.id);
     const analysis = useMemo(() => {
         const existing = FIELD_ANALYSES.find(a => a.fieldId === params.id);
@@ -523,11 +526,13 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
     const generatedOverlays = useMemo(() => {
         if (!field) return {};
         return {
-            pest: getFieldOverlay(field.id, 'pest'),
-            disease: getFieldOverlay(field.id, 'disease'),
-            weed: getFieldOverlay(field.id, 'weed'),
+            pest: getFieldOverlay(field.id, 'pest', field, weeklyChallenges),
+            disease: getFieldOverlay(field.id, 'disease', field, weeklyChallenges),
+            weed: getFieldOverlay(field.id, 'weed', field, weeklyChallenges),
+            nutrient: getFieldOverlay(field.id, 'nutrient', field, weeklyChallenges),
+            drought: getFieldOverlay(field.id, 'drought', field, weeklyChallenges),
         };
-    }, [field]);
+    }, [field, weeklyChallenges]);
 
     const fieldChallenges = useMemo(() => {
         if (!field) return [];
@@ -591,6 +596,10 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
     const bottomPanelClass = viewMode === 'ops'
         ? 'flex-1 min-h-0 border-t border-white/10 bg-black/20 overflow-hidden'
         : 'h-48 md:h-64 shrink-0 border-t border-white/10 bg-black/20 overflow-hidden';
+    const hasAnyProblemOverlay = Object.values(generatedOverlays).some((overlay: any) => overlay?.hasProblems);
+    const activeProblemOverlayCount = activeProblemOverlays.filter(
+        overlayId => generatedOverlays[overlayId as keyof typeof generatedOverlays]?.hasProblems
+    ).length;
     const handleOpenWeeklyPlan = () => {
         openWeeklyPlanner();
         // Fallback in case component closures are stale during hot-reload sessions.
@@ -627,7 +636,7 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
                                     "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border",
                                     openRiskCount > 0
                                         ? "border-orange-300/20 bg-orange-500/10 text-orange-200"
-                                        : "border-blue-300/20 bg-blue-500/10 text-blue-200"
+                                        : "border-primary/20 bg-primary/10 text-primary"
                                 )}>
                                     <ShieldAlert className="w-3.5 h-3.5" />
                                     {openRiskCount > 0 ? `${openRiskCount} Active Risks` : 'Low Risk'}
@@ -832,7 +841,7 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
                             <div className="rounded-xl card-soft p-4 fade-up">
                                 <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                                     <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                                        <Bot className="w-4 h-4 text-blue-400" />
+                                        <Bot className="w-4 h-4 text-primary" />
                                         Strategy Coach Guidance
                                     </div>
                                     <div className="text-sm font-semibold">{guidanceText}</div>
@@ -842,7 +851,7 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
                                             <button
                                                 onClick={() => router.push(`/game/marketplace/services?fieldId=${field.id}`)}
                                                 data-guide-id="field-cta-go-services"
-                                                className="px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+                                                className={strategyActionClass('primary', 'px-3 py-1.5 text-xs')}
                                             >
                                                 <ArrowRightCircle className="w-3.5 h-3.5" />
                                                 Go to Services
@@ -850,7 +859,7 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
                                         )}
                                         {fieldChallenges.length === 0 && !field.inputStatus?.needsProtection && field.farmingStage !== 'harvest_ready' && (
                                             <button
-                                                onClick={advanceTime}
+                                                onClick={() => advanceTime()}
                                                 data-guide-id="field-cta-advance-week"
                                                 className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5"
                                             >
@@ -867,7 +876,6 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
                     {/* Map View Section - Takes remaining space */}
                     <div className={mapSectionClass}>
                         {/* Multispectral Image Display */}
-                        {/* Multispectral Image Display */}
                         {comparisonMode ? (
                             <ComparisonSlider
                                 leftImage={(() => {
@@ -875,7 +883,7 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
                                         const type = activeLayer === 'lidar-elevation' ? 'elevation' :
                                             activeLayer === 'lidar-absolute' ? 'absolute' : 'crop-height';
                                         const overlay = getFieldOverlay(field.id, type as any);
-                                        return `data:image/svg+xml;utf8,${encodeURIComponent(overlay.svg)}`;
+                                        return svgToDataUrl(overlay.svg);
                                     }
                                     return LAYER_IMAGES[activeLayer];
                                 })()}
@@ -885,7 +893,7 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
                                         const type = comparisonLayer === 'lidar-elevation' ? 'elevation' :
                                             comparisonLayer === 'lidar-absolute' ? 'absolute' : 'crop-height';
                                         const overlay = getFieldOverlay(field.id, type as any);
-                                        return `data:image/svg+xml;utf8,${encodeURIComponent(overlay.svg)}`;
+                                        return svgToDataUrl(overlay.svg);
                                     }
                                     return LAYER_IMAGES[comparisonLayer];
                                 })()}
@@ -1072,18 +1080,29 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
                                     {/* Problem Overlays */}
                                     {activeProblemOverlays.map(overlayId => {
                                         const overlayData = generatedOverlays[overlayId as keyof typeof generatedOverlays];
-                                        if (!overlayData) return null;
-                                        const svgDataUrl = `data:image/svg+xml;utf8,${encodeURIComponent(overlayData.svg)}`;
+                                        if (!overlayData?.hasProblems) return null;
+                                        const svgDataUrl = svgToDataUrl(overlayData.svg);
                                         return (
                                             <div
                                                 key={overlayId}
-                                                className="absolute inset-0 pointer-events-none"
-                                                style={{ opacity: overlayOpacity / 100 }}
+                                                className="absolute inset-0 pointer-events-none z-10 backdrop-blur-[1px] saturate-125"
+                                                style={{ opacity: 1 }}
                                             >
-                                                <img src={svgDataUrl} alt={`${overlayId} overlay`} className="w-full h-full object-contain" />
+                                                <div
+                                                    className="w-full h-full bg-contain bg-center bg-no-repeat blur-[0.2px]"
+                                                    style={{ backgroundImage: `url("${svgDataUrl}")` }}
+                                                />
                                             </div>
                                         );
                                     })}
+
+                                    {activeProblemOverlays.length > 0 && activeProblemOverlayCount === 0 && (
+                                        <div className="absolute inset-x-0 top-4 z-30 flex justify-center pointer-events-none">
+                                            <div className="rounded-full border border-emerald-400/25 bg-black/45 px-3 py-1.5 text-xs font-medium text-emerald-100 shadow-lg backdrop-blur-md">
+                                                No active problems detected
+                                            </div>
+                                        </div>
+                                    )}
 
                                     {/* LIDAR Overlay */}
                                     {activeLayer.startsWith('lidar-') && (() => {
@@ -1314,17 +1333,30 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
                                             min={20}
                                             max={100}
                                             step={5}
-                                            value={overlayOpacity}
-                                            onChange={(e) => setOverlayOpacity(Number(e.target.value))}
+                                            value={100}
+                                            onChange={() => setOverlayOpacity(100)}
                                             className="w-full"
                                         />
-                                        <div className="text-[11px] text-muted-foreground mt-1">{overlayOpacity}%</div>
+                                        <div className="text-[11px] text-muted-foreground mt-1">100%</div>
                                     </div>
                                     <div className="pt-1">
                                         <div className="text-xs text-muted-foreground mb-2">Problem Overlays</div>
-                                        {PROBLEM_OVERLAYS.map(overlay => (
+                                        {PROBLEM_OVERLAYS.map(overlay => {
+                                            const IconComp = overlay.id === 'pest' ? Bug :
+                                                overlay.id === 'disease' ? Droplet :
+                                                overlay.id === 'weed' ? Leaf :
+                                                overlay.id === 'nutrient' ? FlaskConical :
+                                                Droplets;
+                                            const overlayData = generatedOverlays[overlay.id as keyof typeof generatedOverlays];
+                                            return (
                                             <label key={overlay.id} className="flex items-center justify-between cursor-pointer mb-2">
-                                                <div className="flex items-center gap-2"><Bug className={cn("w-4 h-4", overlay.color)} /><span className="text-sm">{overlay.name}</span></div>
+                                                <div className="flex items-center gap-2">
+                                                    <IconComp className={cn("w-4 h-4", overlay.color)} />
+                                                    <span className="text-sm">{overlay.name}</span>
+                                                    {!overlayData?.hasProblems && (
+                                                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">clear</span>
+                                                    )}
+                                                </div>
                                                 <input
                                                     type="checkbox"
                                                     checked={activeProblemOverlays.includes(overlay.id)}
@@ -1335,7 +1367,29 @@ export default function FieldDetailPage({ params }: { params: { id: string } }) 
                                                     className="w-4 h-4"
                                                 />
                                             </label>
-                                        ))}
+                                            );
+                                        })}
+                                        {!hasAnyProblemOverlay && (
+                                            <div className="mt-2 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+                                                No active problems detected
+                                            </div>
+                                        )}
+                                        <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.03] p-2">
+                                            <div className="h-2 rounded-full overflow-hidden flex">
+                                                <div className="flex-1 bg-red-500" />
+                                                <div className="flex-1 bg-purple-500" />
+                                                <div className="flex-1 bg-green-500" />
+                                                <div className="flex-1 bg-yellow-400" />
+                                                <div className="flex-1 bg-blue-500" />
+                                            </div>
+                                            <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                                                <span><span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1" />Pest</span>
+                                                <span><span className="inline-block w-2 h-2 rounded-full bg-purple-500 mr-1" />Disease</span>
+                                                <span><span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1" />Weed</span>
+                                                <span><span className="inline-block w-2 h-2 rounded-full bg-yellow-400 mr-1" />Nutrient</span>
+                                                <span><span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1" />Drought</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

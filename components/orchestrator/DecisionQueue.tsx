@@ -16,7 +16,14 @@ import {
     ChevronUp
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Decision, DecisionPriority, DecisionStatus } from '@/types/orchestrator';
+import { useOrchestratorStore } from '@/lib/orchestrator';
+import { Decision, DecisionPriority, DecisionStatus, AutomationLevel } from '@/types/orchestrator';
+
+const ORCHESTRATOR_HEADERS = {
+    'content-type': 'application/json',
+    'x-agri-user-id': 'local-ui',
+    'x-agri-user-role': 'supervisor',
+};
 
 interface DecisionQueueProps {
     className?: string;
@@ -181,11 +188,19 @@ function DecisionCard({ decision, mode, onApprove, onDecline, onModify }: Decisi
 }
 
 export function DecisionQueue({ className }: DecisionQueueProps) {
-    const [mode, setMode] = React.useState<'auto' | 'assisted' | 'manual'>('assisted');
     const [showHistory, setShowHistory] = React.useState(false);
+    const [isLoading, setIsLoading] = React.useState(false);
+    const [queueError, setQueueError] = React.useState<string | null>(null);
+    const {
+        automationLevel,
+        activeDecisions,
+        setAutomationLevel,
+    } = useOrchestratorStore();
 
-    // Mock decisions - would come from API
-    const [decisions, setDecisions] = React.useState<Decision[]>([
+    const mode: 'auto' | 'assisted' | 'manual' =
+        automationLevel === 'fully_automated' ? 'auto' : automationLevel;
+
+    const seedDecisions = React.useMemo<Decision[]>(() => [
         {
             id: 'dec-1',
             type: 'irrigate',
@@ -333,9 +348,62 @@ export function DecisionQueue({ className }: DecisionQueueProps) {
                 recommendedResolution: 'Execute fungicide first and reschedule irrigation after spray interval.',
             },
         },
-    ]);
+    ], []);
 
-    const [history, setHistory] = React.useState<Decision[]>([
+    const [remoteDecisions, setRemoteDecisions] = React.useState<Decision[]>([]);
+    const [hasSynced, setHasSynced] = React.useState(false);
+
+    const syncPendingDecisionsFromApi = React.useCallback(async () => {
+        setIsLoading(true);
+        setQueueError(null);
+        try {
+            const response = await fetch('/api/decisions', {
+                headers: ORCHESTRATOR_HEADERS,
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload?.error || `Failed to load decisions (${response.status})`);
+            }
+            setRemoteDecisions(payload.decisions || []);
+            setHasSynced(true);
+        } catch (error) {
+            setQueueError((error as Error).message || 'Failed to load decision queue');
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
+
+    React.useEffect(() => {
+        void syncPendingDecisionsFromApi();
+    }, [syncPendingDecisionsFromApi]);
+
+
+    const decisions = React.useMemo(() => {
+        // If we have successfully synced from remote, that's the source of truth
+        if (hasSynced) {
+            return remoteDecisions;
+        }
+        
+        // Before sync or on sync error, check activeDecisions in store
+        if (activeDecisions.length > 0) {
+            const pending = activeDecisions.filter((decision) => decision.status === 'pending');
+            if (pending.length > 0) return pending;
+        }
+        
+        // Final fallback to seed (only if not synced yet and no active decisions)
+        return seedDecisions;
+    }, [activeDecisions, hasSynced, remoteDecisions, seedDecisions]);
+
+    const history = React.useMemo(
+        () => activeDecisions.filter((decision) => decision.status !== 'pending'),
+        [activeDecisions]
+    );
+
+    const modeToAutomationLevel = (value: 'auto' | 'assisted' | 'manual'): AutomationLevel => (
+        value === 'auto' ? 'fully_automated' : value
+    );
+
+    const [historySeed] = React.useState<Decision[]>([
         {
             id: 'dec-0-1',
             type: 'harvest',
@@ -388,25 +456,58 @@ export function DecisionQueue({ className }: DecisionQueueProps) {
     ]);
 
     const handleApprove = (id: string) => {
-        setDecisions(prev => prev.filter(d => d.id !== id));
-        const decision = decisions.find(d => d.id === id);
-        if (decision) {
-            setHistory(prev => [{ ...decision, status: 'completed' as DecisionStatus, executedAt: new Date() }, ...prev]);
-        }
+        void (async () => {
+            setQueueError(null);
+            try {
+                const response = await fetch(`/api/decisions/${id}/approve`, {
+                    method: 'POST',
+                    headers: ORCHESTRATOR_HEADERS,
+                    body: JSON.stringify({ approvedBy: 'local-ui' }),
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || payload?.success === false) {
+                    throw new Error(payload?.error || `Failed to approve decision (${response.status})`);
+                }
+                await syncPendingDecisionsFromApi();
+            } catch (error) {
+                setQueueError((error as Error).message || 'Failed to approve decision');
+            }
+        })();
     };
 
     const handleDecline = (id: string) => {
-        setDecisions(prev => prev.filter(d => d.id !== id));
-        const decision = decisions.find(d => d.id === id);
-        if (decision) {
-            setHistory(prev => [{ ...decision, status: 'declined' as DecisionStatus }, ...prev]);
-        }
+        void (async () => {
+            setQueueError(null);
+            try {
+                const response = await fetch(`/api/decisions/${id}/decline`, {
+                    method: 'POST',
+                    headers: ORCHESTRATOR_HEADERS,
+                    body: JSON.stringify({ reason: 'Declined from decision queue' }),
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || payload?.success === false) {
+                    throw new Error(payload?.error || `Failed to decline decision (${response.status})`);
+                }
+                await syncPendingDecisionsFromApi();
+            } catch (error) {
+                setQueueError((error as Error).message || 'Failed to decline decision');
+            }
+        })();
     };
 
     const handleModify = (id: string) => {
         // Would open a modify dialog
         console.log('Modify decision:', id);
     };
+
+    const combinedHistory = React.useMemo(() => {
+        const merged = [...history, ...historySeed];
+        return merged.sort((a, b) => {
+            const aTime = new Date(a.executedAt || a.createdAt).getTime();
+            const bTime = new Date(b.executedAt || b.createdAt).getTime();
+            return bTime - aTime;
+        });
+    }, [history, historySeed]);
 
     return (
         <div className={cn(
@@ -425,7 +526,7 @@ export function DecisionQueue({ className }: DecisionQueueProps) {
                     <span className="text-xs text-muted-foreground">Mode:</span>
                     <select 
                         value={mode}
-                        onChange={(e) => setMode(e.target.value as any)}
+                        onChange={(e) => setAutomationLevel(modeToAutomationLevel(e.target.value as 'auto' | 'assisted' | 'manual'))}
                         className="bg-white/10 border border-white/20 rounded-lg text-xs px-2 py-1 outline-none focus:border-rose-400"
                     >
                         <option value="manual">Manual</option>
@@ -436,12 +537,18 @@ export function DecisionQueue({ className }: DecisionQueueProps) {
             </div>
 
             <div className="flex-1 overflow-y-auto py-4 space-y-4">
+                {queueError && (
+                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                        {queueError}
+                    </div>
+                )}
                 {/* Pending Decisions */}
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-muted-foreground">
                             <ArrowRight className="w-4 h-4" />
                             <span className="text-xs uppercase tracking-wider">Pending ({decisions.length})</span>
+                            {isLoading && <span className="text-[10px] text-muted-foreground">Syncing…</span>}
                         </div>
                     </div>
                     
@@ -479,7 +586,7 @@ export function DecisionQueue({ className }: DecisionQueueProps) {
                     
                     {showHistory && (
                         <div className="space-y-2">
-                            {history.map((decision) => (
+                            {combinedHistory.map((decision) => (
                                 <div 
                                     key={decision.id}
                                     className="p-3 bg-white/5 rounded-lg border border-white/10 opacity-60"

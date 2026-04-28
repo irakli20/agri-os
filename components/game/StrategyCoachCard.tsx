@@ -5,6 +5,7 @@ import { Widget } from '@/components/dashboard/DashboardGrid';
 import { useFieldStore } from '@/lib/field-store';
 import { useGameStore } from '@/lib/game-store';
 import { buildFieldInsights } from '@/lib/strategy-coach';
+import { StrategyActionButton, StrategyActionLink } from '@/components/game/strategy-ui';
 import { Bot, ChevronRight, Calendar, AlertTriangle, Sprout, Droplets, ShieldAlert, Leaf, Clock3 } from 'lucide-react';
 
 export function StrategyCoachCard() {
@@ -32,44 +33,44 @@ export function StrategyCoachCard() {
     if (gameFields.length === 0) {
         guidanceText = 'Acquire your first field to start the growth cycle.';
         primaryAction = (
-            <Link
+            <StrategyActionLink
                 href="/game/marketplace"
                 data-guide-id="game-cta-open-marketplace"
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white text-sm font-semibold"
+                variant="secondary"
             >
                 Open Marketplace <ChevronRight className="w-4 h-4" />
-            </Link>
+            </StrategyActionLink>
         );
     } else if (openChallenges.length > 0) {
         guidanceText = `You have ${openChallenges.length} open priority ${openChallenges.length === 1 ? 'task' : 'tasks'} this week.`;
         primaryAction = (
-            <button
+            <StrategyActionButton
                 onClick={openWeeklyPlanner}
                 data-guide-id="game-cta-open-weekly-plan"
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold"
             >
                 Open Weekly Plan <ChevronRight className="w-4 h-4" />
-            </button>
+            </StrategyActionButton>
         );
     } else if (topInsight) {
         primaryAction = (
-            <Link
+            <StrategyActionLink
                 href={topInsight.actionHref}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white text-sm font-semibold"
+                variant="secondary"
             >
                 {topInsight.actionLabel} <ChevronRight className="w-4 h-4" />
-            </Link>
+            </StrategyActionLink>
         );
     } else {
-        guidanceText = 'All weekly priorities are complete. Advance to generate next-week tasks.';
+        guidanceText = `All priorities complete for ${gameTime.season} week ${gameTime.week}. Advance to the next week for fresh weather windows and operations.`;
         primaryAction = (
-            <button
-                onClick={advanceTime}
+            <StrategyActionButton
+                onClick={() => advanceTime()}
                 data-guide-id="game-cta-next-week"
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold"
+                variant="secondary"
+                title="Advance one full week and process planned operations"
             >
-                Advance to Week {gameTime.week + 1} <Calendar className="w-4 h-4" />
-            </button>
+                Advance Week <Calendar className="w-4 h-4" />
+            </StrategyActionButton>
         );
     }
 

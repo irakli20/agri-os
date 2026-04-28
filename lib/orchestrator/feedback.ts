@@ -182,6 +182,7 @@ function calculateSatisfaction(outcome: OutcomeRecord): number {
 }
 
 function storeOutcome(outcome: OutcomeRecord): void {
+  if (typeof window === 'undefined') return;
   const existing = JSON.parse(localStorage.getItem(OUTCOME_STORAGE_KEY) || '[]');
   existing.push(outcome);
   
@@ -196,6 +197,7 @@ function storeOutcome(outcome: OutcomeRecord): void {
 export function getStoredOutcomes(
   filter?: { decisionType?: DecisionType; fieldId?: string; limit?: number }
 ): OutcomeRecord[] {
+  if (typeof window === 'undefined') return [];
   const outcomes: OutcomeRecord[] = JSON.parse(localStorage.getItem(OUTCOME_STORAGE_KEY) || '[]');
   
   let filtered = outcomes.map(o => ({
@@ -436,13 +438,15 @@ export function updateGrowthModels(
   }
 
   // Store calibration data
-  const existingCalibrations = JSON.parse(localStorage.getItem('agri-os-calibrations') || '[]');
-  existingCalibrations.push({
-    timestamp: new Date().toISOString(),
-    calibrations,
-    fieldId,
-  });
-  localStorage.setItem('agri-os-calibrations', JSON.stringify(existingCalibrations.slice(-20)));
+  if (typeof window !== 'undefined') {
+    const existingCalibrations = JSON.parse(localStorage.getItem('agri-os-calibrations') || '[]');
+    existingCalibrations.push({
+      timestamp: new Date().toISOString(),
+      calibrations,
+      fieldId,
+    });
+    localStorage.setItem('agri-os-calibrations', JSON.stringify(existingCalibrations.slice(-20)));
+  }
 
   console.log(`[Feedback] Growth models calibrated with ${outcomes.length} samples`);
   return calibrations;
@@ -490,18 +494,24 @@ export function calculatePredictionAccuracy(
   );
 
   // Calculate by decision type
-  const byType: Partial<Record<DecisionType, number>> = {};
+  const byTypeCountsAndSums: Partial<Record<DecisionType, { sum: number; count: number }>> = {};
   const decisions = orchestratorStore.activeDecisions;
   
   outcomes.forEach(outcome => {
     const decision = decisions.find(d => d.id === outcome.decisionId);
     if (decision) {
-      const typeAccuracies = byType[decision.type] || [];
       const accuracy = 1 - Math.abs(outcome.prediction.expectedCost - outcome.actual.cost) / outcome.prediction.expectedCost;
-      // Average with existing
-      byType[decision.type] = ((byType[decision.type] || 0) * (typeAccuracies as any) + accuracy) / ((typeAccuracies as any) + 1 || 1);
+      const entry = byTypeCountsAndSums[decision.type] || { sum: 0, count: 0 };
+      entry.sum += accuracy;
+      entry.count += 1;
+      byTypeCountsAndSums[decision.type] = entry;
     }
   });
+
+  const byType: Partial<Record<DecisionType, number>> = {};
+  for (const [type, entry] of Object.entries(byTypeCountsAndSums)) {
+    byType[type as DecisionType] = entry.count > 0 ? entry.sum / entry.count : 0;
+  }
 
   // Calculate by field
   const byField: Record<string, number> = {};
@@ -699,8 +709,8 @@ export function generatePerformanceReport(
       manualDecisions: manualDecisions.length,
       manualAvgROI: manualAvgROI,
       advantage: aiAvgROI > manualAvgROI 
-        ? ((aiAvgROI - manualAvgROI) / manualAvgROI) * 100 
-        : ((manualAvgROI - aiAvgROI) / aiAvgROI) * 100,
+        ? ((aiAvgROI - manualAvgROI) / Math.max(manualAvgROI, 0.01)) * 100 
+        : ((manualAvgROI - aiAvgROI) / Math.max(aiAvgROI, 0.01)) * 100,
     },
     topPerforming: sortedByROI.slice(0, 5).map(d => ({
       decisionId: d.id,

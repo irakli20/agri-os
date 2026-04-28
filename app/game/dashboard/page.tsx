@@ -13,7 +13,9 @@ export default function GameDashboardPage() {
             <div className="h-full overflow-y-auto p-6">
                 <GameControlBar />
                 <DashboardGrid className="mt-6">
-                    <StrategyCoachCard />
+                    <div className="sticky top-[82px] z-40">
+                        <StrategyCoachCard />
+                    </div>
                     <InventorySummaryCard />
                 </DashboardGrid>
             </div>

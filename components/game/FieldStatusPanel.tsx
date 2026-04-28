@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
+import { Target } from 'lucide-react';
 import { Field } from '@/lib/mock-data';
 import {
     Droplets, Sprout, Tractor, AlertCircle, ArrowRight,
     Loader2, Wrench, Radar, Leaf, CheckCircle2, Circle
 } from 'lucide-react';
 import Link from 'next/link';
-import { useGameStore } from '@/lib/game-store';
+import { useGameStore, InventoryItem } from '@/lib/game-store';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
+import { MOCK_SUPPLY_PRODUCTS } from '@/lib/supplies-store';
 
 interface FieldStatusPanelProps {
     field: Field;
@@ -112,8 +114,9 @@ function getCornTip(stage: Field['farmingStage']): string | null {
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 export const FieldStatusPanel: React.FC<FieldStatusPanelProps> = ({ field }) => {
-    const { performFieldOperation, equipment, inventory, cornFocusMode } = useGameStore();
+    const { performFieldOperation, equipment, inventory, cornFocusMode, buySupplies } = useGameStore();
     const [isProcessing, setIsProcessing] = useState(false);
+    const [pendingAction, setPendingAction] = useState<{ id: string; label: string; type: string } | null>(null);
     const router = useRouter();
     const hasTractor = equipment.some(eq => eq.category === 'tractor');
     const hasHarvester = equipment.some(eq => eq.category === 'harvester');
@@ -217,13 +220,11 @@ export const FieldStatusPanel: React.FC<FieldStatusPanelProps> = ({ field }) => 
         if (!nextStep) return;
 
         if (nextStep.type === 'service') {
-            if (nextStep.id === 'buy-seeds') {
-                router.push('/game/marketplace/supplies');
-            } else if (nextStep.id === 'buy-chemical') {
-                router.push('/game/marketplace/supplies');
-            } else {
-                router.push(`/game/marketplace/services?fieldId=${field.id}`);
+            if (nextStep.id === 'buy-seeds' || nextStep.id === 'buy-chemical') {
+                setPendingAction(nextStep);
+                return;
             }
+            router.push(`/game/marketplace/services?fieldId=${field.id}`);
             return;
         }
         setIsProcessing(true);
@@ -396,6 +397,79 @@ export const FieldStatusPanel: React.FC<FieldStatusPanelProps> = ({ field }) => 
 
             {/* Corn Season Progress Stepper */}
             {isCornMode && <CornProgressStepper currentStage={field.farmingStage} />}
+
+            {pendingAction && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+                    <div className="modal-shell max-w-md w-full bg-zinc-950/95 border border-white/10 rounded-xl p-6 shadow-2xl">
+                        <div className="text-center">
+                            <div className="w-14 h-14 rounded-full bg-orange-500/20 flex items-center justify-center mx-auto mb-4">
+                                <Target className="w-7 h-7 text-orange-400" />
+                            </div>
+                            <h3 className="text-lg font-bold text-foreground mb-2">Confirm Purchase</h3>
+                            <p className="text-sm text-muted-foreground mb-4">
+                                You are about to purchase supplies for this field:
+                            </p>
+                        </div>
+                        
+                        <div className="bg-white/5 border border-white/10 rounded-lg p-4 mb-6">
+                            <div className="font-semibold text-foreground mb-1">{pendingAction.label}</div>
+                            <div className="text-sm text-muted-foreground">
+                                Field: {field.name}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-2">
+                                This will automatically purchase the supplies for this field.
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setPendingAction(null)}
+                                className="flex-1 px-4 py-2.5 rounded-lg bg-white/10 hover:bg-white/15 text-sm font-medium transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (!pendingAction) return;
+                                    const actionId = pendingAction.id;
+                                    setPendingAction(null);
+                                    
+                                    let product = null;
+                                    if (actionId === 'buy-seeds') {
+                                        const seeds = MOCK_SUPPLY_PRODUCTS.filter(p => p.category === 'seeds' && p.inStock);
+                                        product = seeds.find(p => p.isCornRelated) || seeds[0];
+                                    } else if (actionId === 'buy-chemical') {
+                                        const chemicals = MOCK_SUPPLY_PRODUCTS.filter(p => p.category === 'pesticide' && p.inStock);
+                                        product = chemicals.find(p => p.isCornRelated) || chemicals[0];
+                                    }
+                                    
+                                    if (product) {
+                                        const item: InventoryItem = {
+                                            id: product.id.includes('pest-') ? `chem-${product.id.replace('pest-', '')}` : product.id,
+                                            name: product.name,
+                                            category: product.category === 'fertilizer' ? 'fertilizer' : 
+                                                      product.category === 'seeds' ? 'seed' : 'chemical',
+                                            quantity: 1,
+                                            unit: product.unit,
+                                        };
+                                        const result = buySupplies(item, product.price);
+                                        if (result.success) {
+                                            alert(`Successfully purchased ${product.name} for ${field.name}!`);
+                                        } else {
+                                            alert(result.error || 'Purchase failed.');
+                                        }
+                                    } else {
+                                        alert('No available supplies in stock.');
+                                    }
+                                }}
+                                className="flex-1 px-4 py-2.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold transition-colors"
+                            >
+                                Confirm & Purchase
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

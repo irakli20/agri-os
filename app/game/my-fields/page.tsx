@@ -8,17 +8,17 @@ import Link from 'next/link';
 import { AlertTriangle, Calendar, Eye, Trash2, Sprout } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { GameAuthScreen } from '@/components/game/GameAuthScreen';
+import { getFieldDisplaySemantics, isFieldGrowing } from '@/lib/field-display';
 
 export default function MyFieldsPage() {
-    const { getActiveFields } = useFieldStore();
+    const { getStrategyFields } = useFieldStore();
     const { currentPlayerId } = useGameStore();
 
     if (!currentPlayerId) {
         return <GameAuthScreen />;
     }
 
-    // Pass true to get game fields specifically
-    const fields = getActiveFields(true);
+    const fields = getStrategyFields();
 
     const getHealthColor = (status: string) => {
         switch (status) {
@@ -31,10 +31,6 @@ export default function MyFieldsPage() {
     };
 
     const getHealthScore = (ndvi: number) => Math.round(ndvi * 100);
-
-    const isFieldGrowing = (field: { farmingStage?: string }) => {
-        return field.farmingStage === 'growing' || field.farmingStage === 'harvest_ready';
-    };
 
     return (
         <GameShell>
@@ -91,7 +87,10 @@ export default function MyFieldsPage() {
                             </Link>
                         </div>
                     ) : (
-                        fields.map((field) => (
+                        fields.map((field) => {
+                            const display = getFieldDisplaySemantics(field);
+
+                            return (
                             <div
                                 key={field.id}
                                 className="glass-panel rounded-2xl p-5 border border-white/10 hover:border-green-500/30 transition-all duration-300 group flex flex-col"
@@ -107,7 +106,7 @@ export default function MyFieldsPage() {
                                             </h3>
                                         </Link>
                                         <p className="text-sm text-muted-foreground mt-0.5">
-                                            {field.crop || 'Fallow'} • {field.acres} ha
+                                            {display.displayCropLabel} • {field.acres} ha
                                         </p>
                                     </div>
                                     <div className="flex flex-col items-end gap-2 shrink-0">
@@ -124,9 +123,9 @@ export default function MyFieldsPage() {
                                 <div className="mb-5 bg-black/20 p-3 rounded-xl">
                                     <div className="flex items-center justify-between mb-2">
                                         <span className="text-xs font-medium text-muted-foreground">
-                                            {isFieldGrowing(field) ? 'Crop Health Score' : 'Field Condition'}
+                                            {display.scoreLabel}
                                         </span>
-                                        <span className="text-xl font-bold">{getHealthScore(field.ndviScore)}</span>
+                                        <span className="text-xl font-bold">{display.scoreValue}</span>
                                     </div>
                                     <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
                                         <div
@@ -136,14 +135,12 @@ export default function MyFieldsPage() {
                                                 field.ndviScore > 0.55 && field.ndviScore <= 0.75 && "bg-yellow-500",
                                                 field.ndviScore <= 0.55 && "bg-red-500"
                                             )}
-                                            style={{ width: `${getHealthScore(field.ndviScore)}%` }}
+                                            style={{ width: `${display.scoreValue}%` }}
                                         />
                                     </div>
-                                    {!isFieldGrowing(field) && (
-                                        <div className="text-[10px] text-muted-foreground mt-1.5 truncate">
-                                            Status: {field.farmingStage ? field.farmingStage.replace(/_/g, ' ') : 'fallow'}
-                                        </div>
-                                    )}
+                                    <div className="text-[10px] text-muted-foreground mt-1.5 truncate">
+                                        {display.scoreDescription}
+                                    </div>
                                 </div>
 
                                 {/* Details Grid */}
@@ -173,10 +170,10 @@ export default function MyFieldsPage() {
                                     href={`/fields/${field.id}`}
                                     className="w-full py-2.5 bg-green-500/10 hover:bg-green-500 text-green-400 hover:text-white border border-green-500/20 hover:border-green-500 rounded-xl text-sm font-semibold transition-all text-center block"
                                 >
-                                    Manage Field
+                                    {display.primaryActionLabel.replace(' →', '')}
                                 </Link>
                             </div>
-                        ))
+                        )})
                     )}
                 </div>
             </div>

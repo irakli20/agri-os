@@ -9,13 +9,13 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { AddFieldModal } from '@/components/modals/AddFieldModal';
 import { CropRotationPlannerModal } from '@/components/modals/CropRotationPlannerModal';
+import { getFieldDisplaySemantics, isFieldGrowing } from '@/lib/field-display';
 
 export default function FieldsPage() {
-    const { getActiveFields, addField, deleteField } = useFieldStore();
+    const { getFieldsForMode, addField, deleteField } = useFieldStore();
     const { gameMode, abandonField } = useGameStore();
 
-    // Get fields based on active mode
-    const fields = getActiveFields(gameMode);
+    const fields = getFieldsForMode(gameMode ? 'strategy' : 'demo');
 
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isRotationPlannerOpen, setIsRotationPlannerOpen] = useState(false);
@@ -32,10 +32,6 @@ export default function FieldsPage() {
     };
 
     const getHealthScore = (ndvi: number) => Math.round(ndvi * 100);
-
-    const isFieldGrowing = (field: { farmingStage?: string }) => {
-        return field.farmingStage === 'growing' || field.farmingStage === 'harvest_ready';
-    };
 
     const handleDeleteField = (fieldId: string) => {
         setFieldToDelete(fieldId);
@@ -138,7 +134,10 @@ export default function FieldsPage() {
                             <button onClick={() => setIsAddModalOpen(true)} className="cta-primary text-sm">Add First Field</button>
                         </div>
                     )}
-                    {fields.map((field, index) => (
+                    {fields.map((field, index) => {
+                        const display = getFieldDisplaySemantics(field);
+
+                        return (
                         <div
                             key={field.id}
                             className="card-soft rounded-2xl p-6 transition-all group elevate-card"
@@ -156,7 +155,7 @@ export default function FieldsPage() {
                                                 <AlertTriangle className="w-5 h-5 text-yellow-400" />
                                             )}
                                         </h3>
-                                        <p className="text-sm text-muted-foreground mt-1">{field.crop} • {field.acres} acres</p>
+                                        <p className="text-sm text-muted-foreground mt-1">{display.displayCropLabel} • {field.acres} acres</p>
                                     </Link>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -183,9 +182,9 @@ export default function FieldsPage() {
                             <div className="mb-4">
                                 <div className="flex items-center justify-between mb-2">
                                     <span className="text-sm text-muted-foreground">
-                                        {isFieldGrowing(field) ? 'NDVI Crop Health' : 'Field Health Score'}
+                                        {display.scoreLabel}
                                     </span>
-                                    <span className="text-2xl font-bold">{getHealthScore(field.ndviScore)}</span>
+                                    <span className="text-2xl font-bold">{display.scoreValue}</span>
                                 </div>
                                 <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
                                     <div
@@ -195,14 +194,12 @@ export default function FieldsPage() {
                                             field.ndviScore > 0.55 && field.ndviScore <= 0.75 && "bg-yellow-500",
                                             field.ndviScore <= 0.55 && "bg-red-500"
                                         )}
-                                        style={{ width: `${getHealthScore(field.ndviScore)}%` }}
+                                        style={{ width: `${display.scoreValue}%` }}
                                     />
                                 </div>
-                                {!isFieldGrowing(field) && (
-                                    <div className="text-[10px] text-muted-foreground mt-1">
-                                        {field.farmingStage ? field.farmingStage.replace(/_/g, ' ') : 'fallow'} — crop NDVI not yet available
-                                    </div>
-                                )}
+                                <div className="text-[10px] text-muted-foreground mt-1">
+                                    {display.scoreDescription}
+                                </div>
                             </div>
 
                             {/* Details Grid */}
@@ -233,10 +230,10 @@ export default function FieldsPage() {
                                 data-guide-id={index === 0 ? 'fields-open-first-field' : undefined}
                                 className="w-full mt-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition-colors text-center block"
                             >
-                                {isFieldGrowing(field) ? 'View Multispectral Analysis →' : 'View Field Details →'}
+                                {display.primaryActionLabel}
                             </Link>
                         </div>
-                    ))}
+                    )})}
                 </div>
             </div>
 
@@ -248,8 +245,10 @@ export default function FieldsPage() {
                     addField({
                         ...fieldData,
                         id: `field-${Date.now()}`,
-                        ndviScore: 0.6,
-                        healthStatus: 'good',
+                        ndviScore: 0.15,
+                        healthStatus: 'attention',
+                        farmingStage: 'scouted',
+                        cropStage: 'none',
                         lastFlightDate: new Date().toISOString(),
                         coordinates: fieldData.coordinates || [
                             [-121.65, 36.68],

@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { mapBbchToCornReferenceStage as mapBbchToSharedCornReferenceStage } from '@/lib/corn-strategy';
 
 export interface ScoutingMission {
     id: string;
@@ -128,19 +129,7 @@ const INITIAL_MISSIONS: ScoutingMission[] = [
 const INITIAL_SCOUTING_RUNS: ScoutingRunRecord[] = [];
 
 export function mapBbchToCornReferenceStage(bbch: string): number {
-    const value = Number.parseInt(bbch, 10);
-    if (Number.isNaN(value)) return 0;
-    if (value <= 11) return 0;
-    if (value <= 12) return 1;
-    if (value <= 16) return 2;
-    if (value <= 39) return 3;
-    if (value <= 53) return 4;
-    if (value <= 69) return 5;
-    if (value <= 74) return 6;
-    if (value <= 79) return 7;
-    if (value <= 83) return 8;
-    if (value <= 87) return 9;
-    return 10;
+    return mapBbchToSharedCornReferenceStage(bbch);
 }
 
 export function mapCropStageCodeToBbch(stageCode: string): string {

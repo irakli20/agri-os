@@ -2,11 +2,16 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { advanceFieldGrowth, applyOperation, canPerformOperation } from './game-logic/field-simulation';
+import { applySeasonalPressure } from './game-logic/season-pressure';
 import { useFieldStore } from './field-store';
-import { EquipmentItem } from './marketplace-data';
+import { EquipmentItem, SERVICES } from './marketplace-data';
 import { Field } from './mock-data';
-import { ScoutingStorage } from './scouting-data';
+import { ScoutingStorage, buildPlannedAerialParams, buildPerformedAerialParams } from './scouting-data';
+import { gameLog, subscribeGameLog } from './game-debug';
+import { escalateChallenges, generateSeasonChallenges, getChallengeWeekNumber } from './corn-challenges';
+import type { CornChallengeCategory, CornChallengeSeverity, CornChallengeInputType } from './corn-challenges';
 
+const challengeLogKeys = new Set<string>();
 
 // ============================================================================
 // Player & Game Types
@@ -50,6 +55,24 @@ export interface WeeklyChallenge {
     fieldId?: string;
     operationId?: string;
     status: 'open' | 'completed' | 'missed';
+    category?: CornChallengeCategory;
+    severity?: CornChallengeSeverity;
+    yieldImpactPct?: number;
+    mitigationDescription?: string;
+    mitigationCost?: number;
+    requiresInput?: { type: CornChallengeInputType; productHint?: string };
+    challengeTemplateId?: string;
+    symptoms?: string;
+    escalationWeeks?: number;
+    createdWeek?: number;
+}
+
+export interface CompletedChallengeRecord {
+    key: string;
+    fieldId: string;
+    category: CornChallengeCategory;
+    completedWeek: number;
+    challengeTemplateId?: string;
 }
 
 export interface WeeklySummary {
@@ -60,6 +83,18 @@ export interface WeeklySummary {
 }
 
 export interface WeeklyWeather {
+    condition: string;
+    windMph: number;
+    precipitationChance: number;
+    fieldworkOpen: boolean;
+    sprayOpen: boolean;
+    harvestOpen: boolean;
+    dailyForecast: DailyWeather[];
+}
+
+export interface DailyWeather {
+    day: number;
+    label: string;
     condition: string;
     windMph: number;
     precipitationChance: number;
@@ -80,6 +115,12 @@ export const XP_PER_LEVEL = 500;
 export const SEASONS = ['Spring', 'Summer', 'Autumn', 'Winter'] as const;
 export const WEEKS_PER_SEASON = 12; // 3 months * 4 weeks
 const WEEKS_PER_YEAR = SEASONS.length * WEEKS_PER_SEASON;
+const CORN_SEASON_END: GameTime = { year: 1, season: 'Autumn', week: 12 };
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+// Bump this when the weather model changes to force re-generation of stale persisted weather
+const WEATHER_MODEL_VERSION = 2;
+const CHALLENGE_COOLDOWN_WEEKS = 4;
 
 function canAfford(balance: number, cost: number): boolean {
     return UNLIMITED_TEST_FUNDS || balance >= cost;
@@ -169,6 +210,12 @@ function normalizeCropName(crop: string): string {
     return normalized;
 }
 
+function isCornCandidate(field: Field): boolean {
+    if (field.crop?.toLowerCase().includes('corn')) return true;
+    if (!field.crop || field.crop === 'Unplanted' || field.crop === 'None') return field.isCornSuitable !== false;
+    return field.farmingStage === 'harvested' || field.farmingStage === 'post_harvest';
+}
+
 function isWithinSeasonWindow(gameTime: GameTime, windows: SeasonWindow[]): boolean {
     return windows.some(window =>
         window.season === gameTime.season &&
@@ -191,26 +238,268 @@ function isHarvestWindowOpen(crop: string, gameTime: GameTime): boolean {
     return isWithinSeasonWindow(gameTime, calendar.harvest);
 }
 
-function generateWeeklyWeather(gameTime: GameTime): WeeklyWeather {
+function gameTimeToOrdinal(gameTime: GameTime): number {
+    return ((gameTime.year - 1) * WEEKS_PER_YEAR) + (SEASONS.indexOf(gameTime.season) * WEEKS_PER_SEASON) + gameTime.week;
+}
+
+function challengeCooldownKey(fieldId?: string, category?: CornChallengeCategory): string | null {
+    return fieldId && category ? `${fieldId}:${category}` : null;
+}
+
+function pruneCompletedChallengeHistory(history: CompletedChallengeRecord[], currentWeek: number): CompletedChallengeRecord[] {
+    return history.filter(record => currentWeek - record.completedWeek < CHALLENGE_COOLDOWN_WEEKS);
+}
+
+function recordCompletedSeasonalChallenge(
+    history: CompletedChallengeRecord[],
+    challenge: WeeklyChallenge | undefined,
+    gameTime: GameTime
+): CompletedChallengeRecord[] {
+    const key = challengeCooldownKey(challenge?.fieldId, challenge?.category);
+    if (!challenge?.challengeTemplateId || !challenge.fieldId || !challenge.category || !key) return history;
+
+    const currentWeek = getChallengeWeekNumber(gameTime);
+    const pruned = pruneCompletedChallengeHistory(history, currentWeek).filter(record => record.key !== key);
+    return [
+        ...pruned,
+        {
+            key,
+            fieldId: challenge.fieldId,
+            category: challenge.category,
+            completedWeek: currentWeek,
+            challengeTemplateId: challenge.challengeTemplateId,
+        },
+    ];
+}
+
+function operationResolvesChallenge(challenge: WeeklyChallenge, operationId: string): boolean {
+    if (!challenge.challengeTemplateId || challenge.status !== 'open') return false;
+
+    const normalizedOperation = mapServiceToOperation(operationId);
+    const normalizedChallengeOperation = mapServiceToOperation(challenge.operationId || '');
+    if (operationId === challenge.operationId || normalizedOperation === normalizedChallengeOperation) return true;
+
+    if (challenge.category === 'pest' || challenge.category === 'disease' || challenge.category === 'weed') {
+        return ['serv-spray-drone', 'op-apply-herbicide'].includes(operationId) ||
+            ['serv-spray-drone', 'op-apply-herbicide'].includes(normalizedOperation);
+    }
+
+    if (challenge.category === 'nutrient') {
+        return ['op-topdress-fertilizer', 'serv-topdress-fertilizer', 'op-apply-fertilizer-incorporated', 'op-soil-test'].includes(operationId) ||
+            ['op-topdress-fertilizer', 'serv-topdress-fertilizer', 'op-apply-fertilizer-incorporated', 'op-soil-test'].includes(normalizedOperation);
+    }
+
+    if (challenge.category === 'weather') {
+        return ['serv-irrigate', 'op-irrigation-setup', 'op-harvest', 'op-scout'].includes(operationId) ||
+            ['serv-irrigate', 'op-irrigation-setup', 'op-harvest', 'op-scout'].includes(normalizedOperation);
+    }
+
+    return normalizedOperation === normalizedChallengeOperation;
+}
+
+function resolveChallengesForOperation(
+    challenges: WeeklyChallenge[],
+    fieldId: string | undefined,
+    operationId: string,
+    gameTime: GameTime,
+    completedChallengeHistory: CompletedChallengeRecord[]
+): { challenges: WeeklyChallenge[]; completedChallengeHistory: CompletedChallengeRecord[] } {
+    let nextHistory = completedChallengeHistory;
+    const nextChallenges = challenges.map(challenge => {
+        if (challenge.fieldId !== fieldId || !operationResolvesChallenge(challenge, operationId)) return challenge;
+        nextHistory = recordCompletedSeasonalChallenge(nextHistory, challenge, gameTime);
+        gameLog('CHALLENGE', `Challenge resolved by operation: ${challenge.title}`, {
+            challengeId: challenge.id,
+            challengeTemplateId: challenge.challengeTemplateId,
+            category: challenge.category,
+            fieldId: challenge.fieldId,
+            operationId,
+            severity: challenge.severity,
+        });
+        return { ...challenge, status: 'completed' as const };
+    });
+
+    return { challenges: nextChallenges, completedChallengeHistory: nextHistory };
+}
+
+function isAtOrAfterCornSeasonEnd(gameTime: GameTime): boolean {
+    return gameTimeToOrdinal(gameTime) >= gameTimeToOrdinal(CORN_SEASON_END);
+}
+
+function getNextGameTime(gameTime: GameTime, cornFocusMode = false): GameTime {
+    if (cornFocusMode && isAtOrAfterCornSeasonEnd(gameTime)) {
+        return gameTime;
+    }
+
+    let newWeek = gameTime.week + 1;
+    let newSeason = gameTime.season;
+    let newYear = gameTime.year;
+
+    if (newWeek > WEEKS_PER_SEASON) {
+        newWeek = 1;
+        const seasonIndex = SEASONS.indexOf(gameTime.season);
+        if (seasonIndex === SEASONS.length - 1) {
+            newSeason = 'Spring';
+            newYear += 1;
+        } else {
+            newSeason = SEASONS[seasonIndex + 1];
+        }
+    }
+
+    const next = { year: newYear, season: newSeason, week: newWeek };
+    return cornFocusMode && gameTimeToOrdinal(next) > gameTimeToOrdinal(CORN_SEASON_END)
+        ? CORN_SEASON_END
+        : next;
+}
+
+function generateDailyWeather(gameTime: GameTime): DailyWeather[] {
     const seasonBase = {
-        Spring: { rain: 45, wind: 11, condition: 'Unsettled spring fronts' },
-        Summer: { rain: 18, wind: 8, condition: 'Dry and stable' },
-        Autumn: { rain: 35, wind: 10, condition: 'Cool transition period' },
+        Spring: { rain: 22, wind: 10, condition: 'Unsettled spring fronts' },
+        Summer: { rain: 14, wind: 8, condition: 'Dry and stable' },
+        Autumn: { rain: 25, wind: 10, condition: 'Cool transition period' },
         Winter: { rain: 62, wind: 15, condition: 'Wet and storm-prone' },
     }[gameTime.season];
 
-    const variationSeed = (gameTime.year * 37) + (gameTime.week * 13);
-    const variation = Math.abs(Math.sin(variationSeed));
-    const precipitationChance = Math.min(95, Math.max(5, Math.round(seasonBase.rain + (variation - 0.5) * 30)));
-    const windMph = Math.max(3, Math.round(seasonBase.wind + (variation - 0.5) * 10));
+    return DAYS.map((label, idx) => {
+        const day = idx + 1;
+        const variationSeed = (gameTime.year * 37) + (SEASONS.indexOf(gameTime.season) * 19) + (gameTime.week * 13) + (day * 7);
+        const rainVariation = Math.sin(variationSeed);
+        const windVariation = Math.cos(variationSeed * 0.71);
+        const precipitationChance = Math.min(95, Math.max(5, Math.round(seasonBase.rain + rainVariation * 18)));
+        const windMph = Math.max(3, Math.round(seasonBase.wind + windVariation * 7));
+        return {
+            day,
+            label,
+            condition: seasonBase.condition,
+            windMph,
+            precipitationChance,
+            fieldworkOpen: precipitationChance <= 55 && windMph <= 20,
+            sprayOpen: precipitationChance <= 30 && windMph <= 12,
+            harvestOpen: precipitationChance <= 45 && windMph <= 18,
+        };
+    });
+}
 
-    return {
-        condition: seasonBase.condition,
+function generateWeeklyWeather(gameTime: GameTime, shouldLog = true): WeeklyWeather {
+    const dailyForecast = generateDailyWeather(gameTime);
+    const precipitationChance = Math.round(dailyForecast.reduce((sum, day) => sum + day.precipitationChance, 0) / dailyForecast.length);
+    const windMph = Math.round(dailyForecast.reduce((sum, day) => sum + day.windMph, 0) / dailyForecast.length);
+    const result = {
+        condition: dailyForecast[0]?.condition || 'Stable',
         windMph,
         precipitationChance,
-        fieldworkOpen: precipitationChance <= 55 && windMph <= 20,
-        sprayOpen: precipitationChance <= 30 && windMph <= 12,
-        harvestOpen: precipitationChance <= 45 && windMph <= 18,
+        fieldworkOpen: dailyForecast.some((day) => day.fieldworkOpen),
+        sprayOpen: dailyForecast.some((day) => day.sprayOpen),
+        harvestOpen: dailyForecast.some((day) => day.harvestOpen),
+        dailyForecast,
+    };
+
+    if (shouldLog) {
+        gameLog('WEATHER', `Generated weather for Y${gameTime.year} ${gameTime.season} W${gameTime.week}`, {
+            precip: precipitationChance, wind: windMph,
+            fieldwork: result.fieldworkOpen, spray: result.sprayOpen, harvest: result.harvestOpen,
+            ...getWeatherLogData(result, gameTime),
+        });
+    }
+
+    return result;
+}
+
+function getWeatherWindowLabel(weather: WeeklyWeather, kind: 'fieldwork' | 'spray' | 'harvest'): string {
+    const key = `${kind}Open` as const;
+    const day = weather.dailyForecast.find((forecast) => forecast[key]);
+    return day ? `${day.label} (${day.precipitationChance}% rain, ${day.windMph} mph wind)` : 'no open day this week';
+}
+
+function getSeasonTemperature(gameTime: GameTime): number {
+    const baseBySeason: Record<GameTime['season'], number> = {
+        Spring: 68,
+        Summer: 84,
+        Autumn: 62,
+        Winter: 42,
+    };
+    const seasonalArc = Math.round(Math.sin((gameTime.week / WEEKS_PER_SEASON) * Math.PI) * 8);
+    return baseBySeason[gameTime.season] + seasonalArc;
+}
+
+function getWeatherLogData(weather: WeeklyWeather, gameTime: GameTime) {
+    return {
+        condition: weather.condition,
+        fieldworkOpen: weather.fieldworkOpen,
+        sprayOpen: weather.sprayOpen,
+        harvestOpen: weather.harvestOpen,
+        fieldworkWindow: getWeatherWindowLabel(weather, 'fieldwork'),
+        sprayWindow: getWeatherWindowLabel(weather, 'spray'),
+        harvestWindow: getWeatherWindowLabel(weather, 'harvest'),
+        temperature: getSeasonTemperature(gameTime),
+        wind: weather.windMph,
+        precipitationChance: weather.precipitationChance,
+    };
+}
+
+function getOperationLogData(
+    field: Field,
+    operationId: string,
+    resultField: Field | undefined,
+    weather: WeeklyWeather,
+    gameTime: GameTime,
+    cost = 0,
+    mode = 'manual',
+    reason?: string
+) {
+    return {
+        mode,
+        reason,
+        operationId,
+        fieldId: field.id,
+        fieldName: field.name,
+        oldStage: field.farmingStage,
+        newStage: resultField?.farmingStage || field.farmingStage,
+        oldBbch: field.bbchStage,
+        bbch: resultField?.bbchStage || field.bbchStage,
+        weather: getWeatherLogData(weather, gameTime),
+        fieldworkOpen: weather.fieldworkOpen,
+        sprayOpen: weather.sprayOpen,
+        harvestOpen: weather.harvestOpen,
+        temperature: getSeasonTemperature(gameTime),
+        wind: weather.windMph,
+        precipitationChance: weather.precipitationChance,
+        cost,
+        acres: field.acres,
+        cropType: resultField?.crop || field.crop,
+        previousCropType: field.crop,
+    };
+}
+
+function canWeatherRunOperation(operationId: string, weather: WeeklyWeather, gameTime?: GameTime): { allowed: boolean; reason?: string } {
+    const logicalOp = mapServiceToOperation(operationId);
+    if (['serv-spray-drone', 'op-apply-herbicide', 'op-pre-plant-herbicide'].includes(logicalOp)) {
+        return weather.sprayOpen
+            ? { allowed: true }
+            : { allowed: false, reason: `spray window closed (${getWeatherWindowLabel(weather, 'spray')})` };
+    }
+    if (['op-harvest', 'serv-harvest-combine-corn', 'serv-harvest-hand'].includes(logicalOp)) {
+        return weather.harvestOpen
+            ? { allowed: true }
+            : { allowed: false, reason: `harvest window closed (${getWeatherWindowLabel(weather, 'harvest')})` };
+    }
+    if (['op-plow', 'op-till', 'op-plant', 'op-topdress-fertilizer', 'op-residue-management', 'op-scout', 'op-aerial-survey', 'op-soil-test', 'op-apply-fertilizer-incorporated'].includes(logicalOp)) {
+        return weather.fieldworkOpen
+            ? { allowed: true }
+            : { allowed: false, reason: `fieldwork window closed (${getWeatherWindowLabel(weather, 'fieldwork')})` };
+    }
+    return { allowed: true };
+}
+
+function makeClosedSeasonWeather(): WeeklyWeather {
+    return {
+        condition: 'Corn season complete',
+        windMph: 0,
+        precipitationChance: 0,
+        fieldworkOpen: false,
+        sprayOpen: false,
+        harvestOpen: false,
+        dailyForecast: [],
     };
 }
 
@@ -246,7 +535,10 @@ function getCornSeedUnits(inventory: InventoryItem[]): number {
 }
 
 function hasGaucho(inventory: InventoryItem[]): boolean {
-    return inventory.some(i => i.id === 'chem-gaucho' && i.quantity > 0);
+    return inventory.some(i =>
+        i.quantity > 0 &&
+        (i.id === 'chem-gaucho' || i.id === 'pest-gaucho')
+    );
 }
 
 function getFuelUnits(inventory: InventoryItem[]): number {
@@ -268,10 +560,15 @@ function getChemicalUnits(inventory: InventoryItem[]): number {
 }
 
 function hasPrePlantHerbicide(inventory: InventoryItem[]): boolean {
-    // Glyphosate or Maister Power qualify as pre-plant burndown
+    // Glyphosate or Maister Power or Adengo qualify as pre-plant burndown
+    // Accept both chem-* (planner alias) and pest-* (supplies page) IDs
+    const validIds = [
+        'chem-herbicide', 'pest-3',              // Glyphosate
+        'chem-maister-power', 'pest-maister-power', // Maister Power
+        'chem-adengo', 'pest-adengo',             // Adengo
+    ];
     return inventory.some(i =>
-        i.quantity > 0 &&
-        (i.id === 'chem-herbicide' || i.id === 'chem-maister-power' || i.id === 'chem-adengo')
+        i.quantity > 0 && validIds.includes(i.id)
     );
 }
 
@@ -311,7 +608,7 @@ function getRecommendedOperation(
     const fuelUnits = getFuelUnits(inventory);
     const canUseOwnMachinery = operatorAssignmentsRemaining > 0;
 
-    const isCornMode = cornFocusMode && field.crop?.toLowerCase().includes('corn');
+    const isCornMode = cornFocusMode && isCornCandidate(field);
     const hasCornSeeds = getCornSeedUnits(inventory) > 0;
     const hasUrea = inventory.some(i => i.id === 'fert-urea' && i.quantity > 0);
     const hasPrePlantChem = hasPrePlantHerbicide(inventory);
@@ -371,7 +668,7 @@ function getRecommendedOperation(
             // ── Corn: pre-plant herbicide burndown is mandatory before tilling ──
             if (isCornMode) {
                 if (!hasPrePlantChem) return { operationId: 'buy-chemical', title: `Buy Pre-Plant Herbicide for ${field.name}`, priority: 'critical', description: 'Corn Focus Mode: glyphosate/Maister Power burndown is required after plowing before tilling.' };
-                if (!weeklyWeather.sprayOpen) return { operationId: 'weekly-plan-open', title: `Spray Window Closed – ${field.name}`, priority: 'high', description: `Pre-plant herbicide window blocked (${weeklyWeather.windMph} mph wind). Wait for calmer conditions.` };
+                if (!weeklyWeather.fieldworkOpen) return { operationId: 'weekly-plan-open', title: `Fieldwork Delayed – ${field.name}`, priority: 'high', description: `Pre-plant herbicide application blocked by weather (${weeklyWeather.precipitationChance}% rain, ${weeklyWeather.windMph} mph wind). Wait for drier conditions.` };
                 return hasTractor
                     ? canUseOwnMachinery
                         ? { operationId: 'op-pre-plant-herbicide', title: `Apply Pre-Plant Herbicide – ${field.name}`, priority: 'critical', description: 'Apply glyphosate/Maister Power burndown to kill off weeds before seedbed preparation.' }
@@ -425,8 +722,9 @@ function getRecommendedOperation(
             if (isCornMode && !gaucho) {
                 return { operationId: 'buy-chemical', title: `Buy Gaucho Seed Treatment – ${field.name}`, priority: 'critical', description: 'Corn Focus Mode: Gaucho seed treatment (imidacloprid) is required before planting to protect against wireworms and soil pests. Buy from Supplies Marketplace.' };
             }
-            if (!isPlantingWindowOpen(field.crop, gameTime)) {
-                return { operationId: 'weekly-plan-open', title: `Planting Window Closed (${field.name})`, priority: 'critical', description: `${field.crop} planting window is closed in ${gameTime.season} W${gameTime.week}. Hold or rotate crop plan.` };
+            const targetCrop = isCornMode || field.crop?.toLowerCase().includes('corn') ? 'Corn' : field.crop;
+            if (!isPlantingWindowOpen(targetCrop, gameTime)) {
+                return { operationId: 'weekly-plan-open', title: `Planting Window Closed (${field.name})`, priority: 'critical', description: `${targetCrop} planting window is closed in ${gameTime.season} W${gameTime.week}. Hold or rotate crop plan.` };
             }
             if (!weeklyWeather.fieldworkOpen) {
                 return { operationId: 'weekly-plan-open', title: `Weather Delay: ${field.name}`, priority: 'high', description: `Planting blocked by weather (${weeklyWeather.precipitationChance}% rain, ${weeklyWeather.windMph} mph wind).` };
@@ -457,15 +755,15 @@ function getRecommendedOperation(
             if (cornFocusMode && field.crop?.toLowerCase().includes('corn')) {
                 const bbch = field.bbchStage || '00';
 
-                if (bbch === '00' && !inventory.some(i => i.id === 'chem-gaucho')) {
+                if (bbch === '00' && !inventory.some(i => (i.id === 'chem-gaucho' || i.id === 'pest-gaucho') && i.quantity > 0)) {
                     return { operationId: 'buy-chemical', title: `Buy Gaucho for ${field.name}`, priority: 'high', description: 'BBCH 00: Seed treatment with Gaucho protects against wireworms and soil pests.' };
                 }
 
-                if ((bbch === '12' || bbch === '13' || bbch === '15' || bbch === '16') && !inventory.some(i => i.id === 'chem-maister-power')) {
+                if ((bbch === '12' || bbch === '13' || bbch === '15' || bbch === '16') && !inventory.some(i => (i.id === 'chem-maister-power' || i.id === 'pest-maister-power') && i.quantity > 0)) {
                     return { operationId: 'buy-chemical', title: `Buy Maister Power for ${field.name}`, priority: 'high', description: `BBCH ${bbch}: Critical window for broad-spectrum weed control in corn. Maister Power recommended.` };
                 }
 
-                if (bbch === '11' && !inventory.some(i => i.id === 'chem-adengo')) {
+                if (bbch === '11' && !inventory.some(i => (i.id === 'chem-adengo' || i.id === 'pest-adengo') && i.quantity > 0)) {
                     return { operationId: 'buy-chemical', title: `Buy Adengo for ${field.name}`, priority: 'high', description: 'BBCH 11: Early post-emergence weed control window. Adengo is highly effective now.' };
                 }
 
@@ -543,6 +841,9 @@ function getRecommendedOperation(
                 ? { operationId: 'op-plow', title: `Start Next Season – Plow ${field.name}`, priority: 'medium', description: 'Begin preparing this field for the next growing season.' }
                 : { operationId: 'serv-plow', title: `Book Pre-Season Plowing – ${field.name}`, priority: 'medium', description: 'Book plowing service to begin next season preparation.' };
         case 'post_harvest':
+            if (isCornMode) {
+                return null;
+            }
             // After residue management: cycle restarts with plowing
             return hasTractor
                 ? canUseOwnMachinery
@@ -561,36 +862,35 @@ function generateChallengesForFields(
     gameTime: GameTime,
     weeklyWeather: WeeklyWeather,
     operatorAssignmentsRemaining: number,
-    cornFocusMode?: boolean
+    isAutoIrrigationEnabled?: boolean,
+    isAutoProcurementEnabled?: boolean,
+    isAutoFieldOpsEnabled?: boolean,
+    isAutoBookingEnabled?: boolean,
+    cornFocusMode?: boolean,
+    existingWeeklyChallenges: WeeklyChallenge[] = [],
+    completedChallengeHistory: CompletedChallengeRecord[] = []
 ): WeeklyChallenge[] {
     const challenges: WeeklyChallenge[] = [];
+    const currentWeek = getChallengeWeekNumber(gameTime);
+    const fieldIds = new Set(fields.map(field => field.id));
+    const recentCompletedKeys = new Set(
+        pruneCompletedChallengeHistory(completedChallengeHistory, currentWeek).map(record => record.key)
+    );
+    const seasonalChallenges: WeeklyChallenge[] = existingWeeklyChallenges.filter(challenge =>
+        challenge.status === 'open' &&
+        !!challenge.challengeTemplateId &&
+        !!challenge.fieldId &&
+        fieldIds.has(challenge.fieldId) &&
+        !recentCompletedKeys.has(challengeCooldownKey(challenge.fieldId, challenge.category) || '')
+    );
+    const activeSeasonalKeys = new Set(
+        seasonalChallenges.map(challenge => challengeCooldownKey(challenge.fieldId, challenge.category)).filter(Boolean)
+    );
 
     const hasMachinery = equipment.some(eq => ['tractor', 'harvester'].includes(eq.category));
-    if (hasMachinery && getFuelUnits(inventory) <= 1) {
-        challenges.push({
-            id: `wk-fuel-${Date.now()}`,
-            title: 'Refuel Machinery',
-            description: 'Diesel reserves are critically low. Buy fuel before dispatching owned machinery.',
-            priority: 'high',
-            rewardXp: 35,
-            operationId: 'buy-fuel',
-            status: 'open',
-        });
-    }
-
-    if (operatorAssignmentsRemaining <= 0 && hasMachinery) {
-        challenges.push({
-            id: `wk-ops-${Date.now()}`,
-            title: 'Hire Extra Operators',
-            description: 'All in-house operator slots are booked for this week. Hire temporary operators to keep operations moving.',
-            priority: 'high',
-            rewardXp: 35,
-            operationId: 'hire-operator',
-            status: 'open',
-        });
-    }
-
-    if (equipment.some(eq => eq.status === 'maintenance')) {
+    
+    // Equipment maintenance automated by Auto-Ops
+    if (!isAutoFieldOpsEnabled && equipment.some(eq => eq.status === 'maintenance')) {
         challenges.push({
             id: `wk-maint-${Date.now()}`,
             title: 'Service Equipment in Maintenance',
@@ -603,16 +903,69 @@ function generateChallengesForFields(
     }
 
     fields.forEach((field, idx) => {
+        const newSeasonalChallenges = generateSeasonChallenges(gameTime, field, cornFocusMode).filter(challenge => {
+            const key = challengeCooldownKey(challenge.fieldId, challenge.category);
+            if (!key) return true;
+            if (recentCompletedKeys.has(key)) return false;
+            if (activeSeasonalKeys.has(key)) return false;
+            activeSeasonalKeys.add(key);
+            return true;
+        });
+        seasonalChallenges.push(...newSeasonalChallenges);
+
         const recommended = getRecommendedOperation(field, equipment, inventory, gameTime, weeklyWeather, operatorAssignmentsRemaining, cornFocusMode);
         const recommendedOperationId = recommended?.operationId || null;
+        const challengeLogKey = [
+            gameTime.year,
+            gameTime.season,
+            gameTime.week,
+            field.id,
+            field.farmingStage || 'unknown',
+            recommendedOperationId || 'null',
+        ].join(':');
+
+        if (!challengeLogKeys.has(challengeLogKey)) {
+            challengeLogKeys.add(challengeLogKey);
+            if (challengeLogKeys.size > 500) {
+                const oldest = challengeLogKeys.values().next().value;
+                if (oldest) challengeLogKeys.delete(oldest);
+            }
+            gameLog('CHALLENGE', `Field "${field.name}" (${field.farmingStage}) → ${recommendedOperationId || 'null'}`, {
+                fieldId: field.id,
+                stage: field.farmingStage,
+                cropStage: field.cropStage,
+                bbch: field.bbchStage,
+                needsNutrients: field.inputStatus?.needsNutrients,
+                needsProtection: field.inputStatus?.needsProtection,
+                needsWater: field.inputStatus?.needsWater,
+                recommended: recommendedOperationId,
+                title: recommended?.title,
+                weatherFieldwork: weeklyWeather.fieldworkOpen,
+                weatherSpray: weeklyWeather.sprayOpen,
+            });
+        }
         const validationOp = recommended ? mapServiceToOperation(recommended.operationId) : null;
         const isPurchasingTask =
             recommended?.operationId === 'buy-seeds' ||
             recommended?.operationId === 'buy-fuel' ||
             recommended?.operationId === 'buy-fertilizer' ||
             recommended?.operationId === 'buy-chemical';
+        
+        // Skip challenges if their respective autopilots are active
+        if (isPurchasingTask && isAutoProcurementEnabled) return;
+        
+        const isBookingTask = recommended?.operationId?.startsWith('serv-');
+        if (isBookingTask && isAutoBookingEnabled) return;
+
+        const isDirectFieldOp = recommended?.operationId?.startsWith('op-');
+        if (isDirectFieldOp && isAutoFieldOpsEnabled) return;
+
+        // Special case for irrigation/spraying which might be tagged as op or serv
+        if ((recommended?.operationId === 'serv-irrigate' || recommended?.operationId === 'op-irrigation-setup') && (isAutoFieldOpsEnabled || isAutoBookingEnabled)) return;
+        if (recommended?.operationId === 'maint-equipment' && isAutoFieldOpsEnabled) return;
+
         const isMetaTask = recommended?.operationId === 'maint-equipment' || recommended?.operationId === 'hire-operator' || recommended?.operationId === 'weekly-plan-open';
-        if (recommended && (isMetaTask || isPurchasingTask || (validationOp && canPerformOperation(field, validationOp).allowed))) {
+        if (recommended && (isMetaTask || isPurchasingTask || (validationOp && canPerformOperation(field, validationOp, cornFocusMode).allowed))) {
             challenges.push({
                 id: `wk-op-${Date.now()}-${idx}`,
                 title: recommended.title,
@@ -625,7 +978,7 @@ function generateChallengesForFields(
             });
         }
 
-        if (field.farmingStage === 'growing' && field.inputStatus?.needsWater && recommendedOperationId !== 'serv-irrigate') {
+        if (!isAutoIrrigationEnabled && !isAutoFieldOpsEnabled && field.farmingStage === 'growing' && field.inputStatus?.needsWater && recommendedOperationId !== 'serv-irrigate') {
             challenges.push({
                 id: `wk-water-${field.id}-${Date.now()}`,
                 title: `Irrigate ${field.name}`,
@@ -640,7 +993,7 @@ function generateChallengesForFields(
             });
         }
 
-        if (field.farmingStage === 'growing' && field.inputStatus?.needsProtection && !['serv-spray-drone', 'op-apply-herbicide', 'buy-chemical'].includes(recommendedOperationId || '')) {
+        if (!isAutoFieldOpsEnabled && field.farmingStage === 'growing' && field.inputStatus?.needsProtection && !['serv-spray-drone', 'op-apply-herbicide', 'buy-chemical'].includes(recommendedOperationId || '')) {
             challenges.push({
                 id: `wk-protect-${field.id}-${Date.now()}`,
                 title: `Protect ${field.name}`,
@@ -656,7 +1009,7 @@ function generateChallengesForFields(
         }
     });
 
-    return challenges.slice(0, 8);
+    return [...seasonalChallenges.slice(0, 3), ...challenges].slice(0, 8);
 }
 
 // ============================================================================
@@ -699,6 +1052,7 @@ interface GameStore {
     operatorAssignmentsUsed: number;
     activeRentals: ActiveRental[];
     weeklyChallenges: WeeklyChallenge[];
+    completedChallengeHistory: CompletedChallengeRecord[];
     weekSummary: WeeklySummary | null;
     isWeeklyPlannerOpen: boolean;
     guideTargetId: string | null;
@@ -713,7 +1067,7 @@ interface GameStore {
     serviceEquipment: () => { success: boolean; error?: string };
     performFieldOperation: (fieldId: string, operationId: string) => { success: boolean; error?: string };
     abandonField: (fieldId: string) => { success: boolean; error?: string };
-    advanceTime: () => void; // Advances week/season
+    advanceTime: (fastForwardToSpring?: boolean) => void; // Advances week/season
     completeChallenge: (challengeId: string) => void;
     refreshWeeklyChallenges: () => void;
     dismissWeekSummary: () => void;
@@ -724,6 +1078,15 @@ interface GameStore {
     clearGuide: () => void;
     isAutoScoutingEnabled: boolean;
     toggleAutoScouting: () => void;
+    isAutoIrrigationEnabled: boolean;
+    toggleAutoIrrigation: () => void;
+    isAutoProcurementEnabled: boolean;
+    toggleAutoProcurement: () => void;
+    isAutoFieldOpsEnabled: boolean;
+    toggleAutoFieldOps: () => void;
+    isAutoBookingEnabled: boolean;
+    toggleAutoBooking: () => void;
+    seasonLog: DebugEntry[];
 }
 
 export interface InventoryItem {
@@ -766,6 +1129,7 @@ export const useGameStore = create<GameStore>()(persist(
         players: [],
         transactions: [],
         pendingOrders: [],
+        seasonLog: [],
 
         toggleGameMode: () => set((state) => ({ gameMode: !state.gameMode })),
         toggleCornFocusMode: () => set((state) => ({ cornFocusMode: !state.cornFocusMode })),
@@ -959,11 +1323,17 @@ export const useGameStore = create<GameStore>()(persist(
         operatorAssignmentsUsed: 0,
         activeRentals: [],
         weeklyChallenges: [],
+        completedChallengeHistory: [],
         weekSummary: null,
         isWeeklyPlannerOpen: false,
         guideTargetId: null,
         guideMessage: null,
         deletedFieldIds: [],
+        isAutoScoutingEnabled: false,
+        isAutoIrrigationEnabled: false,
+        isAutoProcurementEnabled: false,
+        isAutoFieldOpsEnabled: false,
+        isAutoBookingEnabled: false,
 
 
 
@@ -1007,7 +1377,14 @@ export const useGameStore = create<GameStore>()(persist(
                     updatedInventory,
                     gameTime,
                     weeklyWeather,
-                    Math.max(0, operatorCapacity - operatorAssignmentsUsed)
+                    Math.max(0, operatorCapacity - operatorAssignmentsUsed),
+                    get().isAutoIrrigationEnabled,
+                    get().isAutoProcurementEnabled,
+                    get().isAutoFieldOpsEnabled,
+                    get().isAutoBookingEnabled,
+                    get().cornFocusMode,
+                    get().weeklyChallenges,
+                    get().completedChallengeHistory
                 )
             });
             return { success: true };
@@ -1039,14 +1416,21 @@ export const useGameStore = create<GameStore>()(persist(
                     inventory,
                     gameTime,
                     weeklyWeather,
-                    Math.max(0, operatorCapacity - operatorAssignmentsUsed)
+                    Math.max(0, operatorCapacity - operatorAssignmentsUsed),
+                    get().isAutoIrrigationEnabled,
+                    get().isAutoProcurementEnabled,
+                    get().isAutoFieldOpsEnabled,
+                    get().isAutoBookingEnabled,
+                    get().cornFocusMode,
+                    get().weeklyChallenges,
+                    get().completedChallengeHistory
                 )
             });
             return { success: true };
         },
 
         addRental: (rental, cost) => {
-            const { currentPlayerId, players, activeRentals, equipment, inventory, gameTime, weeklyWeather, operatorCapacity, operatorAssignmentsUsed } = get();
+            const { currentPlayerId, players, activeRentals, equipment, inventory, gameTime, weeklyWeather, operatorCapacity, operatorAssignmentsUsed, cornFocusMode } = get();
             const playerIndex = players.findIndex(p => p.id === currentPlayerId);
             if (playerIndex === -1) return { success: false, error: 'Not logged in' };
 
@@ -1066,10 +1450,11 @@ export const useGameStore = create<GameStore>()(persist(
                     // Map service IDs to valid operation IDs
                     const opId = mapServiceToOperation(rental.serviceId);
                     if (opId === 'op-plant') {
-                        if (!isPlantingWindowOpen(field.crop, gameTime)) {
+                        const targetCrop = cornFocusMode || field.crop?.toLowerCase().includes('corn') ? 'Corn' : field.crop;
+                        if (!isPlantingWindowOpen(targetCrop, gameTime)) {
                             return {
                                 success: false,
-                                error: `Planting window is closed for ${field.crop} in ${gameTime.season} week ${gameTime.week}.`
+                                error: `Planting window is closed for ${targetCrop} in ${gameTime.season} week ${gameTime.week}.`
                             };
                         }
                         if (getSeedUnits(inventory) <= 0) {
@@ -1112,7 +1497,7 @@ export const useGameStore = create<GameStore>()(persist(
                         };
                     }
 
-                    const result = applyOperation(field, opId);
+                    const result = applyOperation(field, opId, cornFocusMode);
 
                     if (result.success && result.field) {
                         fieldStore.updateField(field.id, result.field);
@@ -1124,20 +1509,37 @@ export const useGameStore = create<GameStore>()(persist(
 
             const updatedPlayers = [...players];
             updatedPlayers[playerIndex] = { ...player, balance: spend(player.balance, cost) };
+            const resolved = rental.fieldId && rental.serviceId
+                ? resolveChallengesForOperation(
+                    get().weeklyChallenges,
+                    rental.fieldId,
+                    mapServiceToOperation(rental.serviceId),
+                    gameTime,
+                    get().completedChallengeHistory || []
+                )
+                : { challenges: get().weeklyChallenges, completedChallengeHistory: get().completedChallengeHistory || [] };
             const refreshedChallenges = generateChallengesForFields(
                 useFieldStore.getState().gameFields,
                 equipment,
                 updatedInventory,
                 gameTime,
                 weeklyWeather,
-                Math.max(0, operatorCapacity - operatorAssignmentsUsed)
+                Math.max(0, operatorCapacity - operatorAssignmentsUsed),
+                get().isAutoIrrigationEnabled,
+                get().isAutoProcurementEnabled,
+                get().isAutoFieldOpsEnabled,
+                get().isAutoBookingEnabled,
+                get().cornFocusMode,
+                resolved.challenges,
+                resolved.completedChallengeHistory
             );
 
             set({
                 players: updatedPlayers,
                 inventory: updatedInventory,
                 activeRentals: [...activeRentals, rental],
-                weeklyChallenges: refreshedChallenges
+                weeklyChallenges: refreshedChallenges,
+                completedChallengeHistory: resolved.completedChallengeHistory
             });
             return { success: true };
         },
@@ -1169,7 +1571,14 @@ export const useGameStore = create<GameStore>()(persist(
                     inventory,
                     gameTime,
                     weeklyWeather,
-                    Math.max(0, newOperatorCapacity - operatorAssignmentsUsed)
+                    Math.max(0, newOperatorCapacity - operatorAssignmentsUsed),
+                    get().isAutoIrrigationEnabled,
+                    get().isAutoProcurementEnabled,
+                    get().isAutoFieldOpsEnabled,
+                    get().isAutoBookingEnabled,
+                    get().cornFocusMode,
+                    get().weeklyChallenges,
+                    get().completedChallengeHistory
                 ),
             });
 
@@ -1216,7 +1625,14 @@ export const useGameStore = create<GameStore>()(persist(
                     inventory,
                     gameTime,
                     weeklyWeather,
-                    Math.max(0, operatorCapacity - operatorAssignmentsUsed)
+                    Math.max(0, operatorCapacity - operatorAssignmentsUsed),
+                    get().isAutoIrrigationEnabled,
+                    get().isAutoProcurementEnabled,
+                    get().isAutoFieldOpsEnabled,
+                    get().isAutoBookingEnabled,
+                    get().cornFocusMode,
+                    get().weeklyChallenges,
+                    get().completedChallengeHistory
                 ),
             });
 
@@ -1307,10 +1723,11 @@ export const useGameStore = create<GameStore>()(persist(
                     return { success: false, error: 'No crop protection chemicals in inventory. Buy from Supplies Marketplace.' };
                 }
                 // Planting window check
-                if (operationId === 'op-plant' && !isPlantingWindowOpen(field.crop, gameTime)) {
+                const targetCrop = isCornField ? 'Corn' : field.crop;
+                if (operationId === 'op-plant' && !isPlantingWindowOpen(targetCrop, gameTime)) {
                     return {
                         success: false,
-                        error: `${field.crop} planting window is closed in ${gameTime.season} W${gameTime.week}. Consult the crop calendar for optimal timing.`
+                        error: `${targetCrop} planting window is closed in ${gameTime.season} W${gameTime.week}. Consult the crop calendar for optimal timing.`
                     };
                 }
                 // Harvest window check
@@ -1326,15 +1743,10 @@ export const useGameStore = create<GameStore>()(persist(
 
             // ── General Operational Gates (Apply to all crops) ───────────────
 
-            // Weather gates for fieldwork ops
-            if (['op-plow', 'op-till', 'op-plant', 'op-pre-plant-herbicide', 'op-residue-management', 'op-apply-fertilizer-incorporated', 'op-topdress-fertilizer'].includes(operationId) && !weeklyWeather.fieldworkOpen) {
-                return { success: false, error: `Fieldwork blocked by weather (${weeklyWeather.precipitationChance}% rain, ${weeklyWeather.windMph} mph wind). Wait for a clear window.` };
-            }
-            if (operationId === 'op-harvest' && !weeklyWeather.harvestOpen) {
-                return { success: false, error: `Harvest blocked by weather (${weeklyWeather.precipitationChance}% rain, ${weeklyWeather.windMph} mph wind). Monitor the forecast.` };
-            }
-            if ((operationId === 'serv-spray-drone' || operationId === 'op-apply-herbicide' || operationId === 'op-pre-plant-herbicide') && !weeklyWeather.sprayOpen) {
-                return { success: false, error: `Spray window closed (${weeklyWeather.windMph} mph wind / ${weeklyWeather.precipitationChance}% rain). Wait for calmer conditions.` };
+            // Weather gates use the weekly execution window.
+            const weatherCheck = canWeatherRunOperation(operationId, weeklyWeather, gameTime);
+            if (!weatherCheck.allowed) {
+                return { success: false, error: `${weatherCheck.reason}. Advance to the next week or wait for the next available weather window.` };
             }
 
             // Operator capacity check
@@ -1354,8 +1766,15 @@ export const useGameStore = create<GameStore>()(persist(
             }
 
             // Apply operation
-            const result = applyOperation(field, operationId);
-            if (!result.success) return { success: false, error: result.error };
+            const result = applyOperation(field, operationId, cornFocusMode);
+            if (!result.success) {
+                gameLog('ERROR', `applyOperation FAILED: ${operationId} on field ${fieldId}`, { error: result.error, stage: field.farmingStage });
+                return { success: false, error: result.error };
+            }
+
+            gameLog('OPERATION', `applyOperation OK: ${operationId} on "${field.name}"`, {
+                ...getOperationLogData(field, operationId, result.field, weeklyWeather, gameTime, cost, 'manual', 'Player executed operation from the weekly plan.'),
+            });
 
             // Update player balance and transactions
             const updatedPlayers = [...players];
@@ -1380,6 +1799,9 @@ export const useGameStore = create<GameStore>()(persist(
             if (result.field) {
                 fieldStore.updateField(fieldId, result.field);
             }
+            
+            // Re-read fresh state after the update – the captured `fieldStore` snapshot is stale
+            const updatedGameFields = useFieldStore.getState().gameFields;
 
             const seededInventory = operationId === 'op-plant'
                 ? inventory.map((item, idx) => {
@@ -1413,14 +1835,28 @@ export const useGameStore = create<GameStore>()(persist(
             const newOperatorAssignmentsUsed = requiresOperator(operationId)
                 ? operatorAssignmentsUsed + 1
                 : operatorAssignmentsUsed;
+            const resolved = resolveChallengesForOperation(
+                get().weeklyChallenges,
+                fieldId,
+                operationId,
+                gameTime,
+                get().completedChallengeHistory || []
+            );
 
             const refreshedChallenges = generateChallengesForFields(
-                useFieldStore.getState().gameFields,
+                updatedGameFields,
                 equipment,
                 fuelAdjustedInventory,
                 gameTime,
                 weeklyWeather,
-                Math.max(0, operatorCapacity - newOperatorAssignmentsUsed)
+                Math.max(0, operatorCapacity - newOperatorAssignmentsUsed),
+                get().isAutoIrrigationEnabled,
+                get().isAutoProcurementEnabled,
+                get().isAutoFieldOpsEnabled,
+                get().isAutoBookingEnabled,
+                get().cornFocusMode,
+                resolved.challenges,
+                resolved.completedChallengeHistory
             );
 
             set({
@@ -1429,6 +1865,7 @@ export const useGameStore = create<GameStore>()(persist(
                 operatorAssignmentsUsed: newOperatorAssignmentsUsed,
                 inventory: fuelAdjustedInventory,
                 weeklyChallenges: refreshedChallenges,
+                completedChallengeHistory: resolved.completedChallengeHistory,
             });
 
             return { success: true };
@@ -1477,25 +1914,67 @@ export const useGameStore = create<GameStore>()(persist(
             return { success: true };
         },
 
-        advanceTime: () => {
+        advanceTime: (fastForwardToSpring = false) => {
             set(state => {
                 const { season, week, year } = state.gameTime;
-                let newWeek = week + 1;
-                let newSeason = season;
-                let newYear = year;
-
-                if (newWeek > WEEKS_PER_SEASON) {
-                    newWeek = 1;
-                    const seasonIndex = SEASONS.indexOf(season);
-                    if (seasonIndex === SEASONS.length - 1) {
-                        newSeason = SEASONS[0];
-                        newYear++;
-                    } else {
-                        newSeason = SEASONS[seasonIndex + 1];
-                    }
+                if (state.cornFocusMode && isAtOrAfterCornSeasonEnd(state.gameTime)) {
+                    return {
+                        weekSummary: {
+                            periodLabel: `Y${year} ${season} W${week}`,
+                            completed: state.weeklyChallenges.filter(c => c.status === 'completed').length,
+                            missed: state.weeklyChallenges.filter(c => c.status === 'open').length,
+                            message: 'Corn Expert season complete. Review harvest, storage, residue, and closeout results. Reset the season to run another simulation.',
+                        },
+                    };
                 }
 
+                let currentWeeklyChallenges = escalateChallenges(
+                    state.weeklyChallenges,
+                    state.gameTime,
+                    (challenge, nextSeverity) => {
+                        gameLog('CHALLENGE', `Challenge escalated: ${challenge.title} → ${nextSeverity}`, {
+                            challengeId: challenge.id,
+                            challengeTemplateId: challenge.challengeTemplateId,
+                            fieldId: challenge.fieldId,
+                            category: challenge.category,
+                            fromSeverity: challenge.severity,
+                            toSeverity: nextSeverity,
+                            currentWeek: getChallengeWeekNumber(state.gameTime),
+                            createdWeek: challenge.createdWeek,
+                            escalationWeeks: challenge.escalationWeeks,
+                        });
+                    }
+                );
+                let completedChallengeHistory = pruneCompletedChallengeHistory(
+                    state.completedChallengeHistory || [],
+                    getChallengeWeekNumber(state.gameTime)
+                );
+
+                const autoActions: string[] = [];
+                let nextGameTime = fastForwardToSpring && !state.cornFocusMode
+                    ? { year: season === 'Autumn' || season === 'Winter' ? year + 1 : year, season: 'Spring' as const, week: 1 }
+                    : getNextGameTime(state.gameTime, state.cornFocusMode);
                 const fieldStore = useFieldStore.getState();
+                let nextWeeklyWeather = generateWeeklyWeather(nextGameTime);
+
+                const { season: newSeason, week: newWeek, year: newYear } = nextGameTime;
+
+                if (fastForwardToSpring && !state.cornFocusMode) {
+                    autoActions.push(`Skipped dormant season: Fast-forwarded to Spring Year ${newYear}`);
+                } else if (fastForwardToSpring && state.cornFocusMode) {
+                    autoActions.push('Corn Expert uses one bounded season. Fast-forward to a new year is disabled; reset season to replay.');
+                }
+
+                gameLog('ADVANCE', `advanceTime: Y${year} ${season} W${week} → Y${newYear} ${newSeason} W${newWeek}`, {
+                    year: newYear,
+                    season: newSeason,
+                    week: newWeek,
+                    pendingOrders: state.pendingOrders.length,
+                    fields: fieldStore.gameFields.length,
+                    cornFocusMode: state.cornFocusMode,
+                    weather: getWeatherLogData(nextWeeklyWeather, nextGameTime),
+                    ...getWeatherLogData(nextWeeklyWeather, nextGameTime),
+                });
 
                 // Process Pending Orders (Simulates night-time micro-windows)
                 let pendingSummaryMsg = "";
@@ -1504,9 +1983,23 @@ export const useGameStore = create<GameStore>()(persist(
                     state.pendingOrders.forEach(order => {
                         const field = fieldStore.gameFields.find(f => f.id === order.fieldId);
                         if (field) {
-                            const result = applyOperation(field, order.operationId);
+                            const result = applyOperation(field, order.operationId, state.cornFocusMode);
                             if (result.success && result.field) {
                                 fieldStore.updateField(field.id, result.field);
+                                const resolved = resolveChallengesForOperation(
+                                    currentWeeklyChallenges,
+                                    field.id,
+                                    order.operationId,
+                                    state.gameTime,
+                                    completedChallengeHistory
+                                );
+                                currentWeeklyChallenges = resolved.challenges;
+                                completedChallengeHistory = resolved.completedChallengeHistory;
+                                gameLog('OPERATION', `Pending order completed: ${order.operationId} on "${field.name}"`, {
+                                    ...getOperationLogData(field, order.operationId, result.field, nextWeeklyWeather, nextGameTime, 0, 'pending-order', 'Previously queued order executed during an open weather window this week.'),
+                                    orderId: order.id,
+                                    orderName: order.name,
+                                });
                                 fieldsUpdated++;
                             }
                         }
@@ -1517,58 +2010,153 @@ export const useGameStore = create<GameStore>()(persist(
                 }
 
                 // Advance Field Growth and Auto-Scouting
+
+                // 1. Auto-Procurement Logic (Buy inputs if low) - Move BEFORE field loop
+                let finalInventory = [...state.inventory];
+                let finalBalance = state.players.find(p => p.id === state.currentPlayerId)?.balance || 0;
+                
+                if (state.isAutoProcurementEnabled) {
+                    // Check Urea (Fertilizer)
+                    const hasUrea = finalInventory.some(i => i.id === 'fert-urea' && i.quantity > 0);
+                    if (!hasUrea && finalBalance > 5000) {
+                        const cost = 2250;
+                        finalBalance -= cost;
+                        finalInventory.push({ id: 'fert-urea', name: 'Urea (46-0-0)', category: 'fertilizer', quantity: 5, unit: 'ton', purchasePrice: 450 });
+                        gameLog('ADVANCE', `Auto-Procurement: Purchased Urea (Balance: $${finalBalance})`, {
+                            mode: 'auto-procurement',
+                            itemName: 'Urea (46-0-0)',
+                            category: 'fertilizer',
+                            quantity: 5,
+                            unit: 'ton',
+                            cost,
+                            balance: finalBalance,
+                            reason: 'Fertilizer inventory was empty before field preparation and nutrient correction tasks.',
+                            weather: getWeatherLogData(nextWeeklyWeather, nextGameTime),
+                        });
+                        autoActions.push(`Purchased Urea Fertilizer ($2,250)`);
+                    }
+
+                    // Check Chemicals (Maister Power & Gaucho)
+                    const hasMaister = finalInventory.some(i => (i.id === 'chem-maister-power' || i.id === 'chem-maister-bio') && i.quantity > 0);
+                    if (!hasMaister && finalBalance > 5000) {
+                        const cost = 1450;
+                        finalBalance -= cost;
+                        finalInventory.push({ id: 'chem-maister-power', name: 'Maister Power', category: 'chemical', quantity: 5, unit: 'L', purchasePrice: 290 });
+                        gameLog('ADVANCE', `Auto-Procurement: Purchased Maister Power (Balance: $${finalBalance})`, {
+                            mode: 'auto-procurement',
+                            itemName: 'Maister Power',
+                            category: 'chemical',
+                            quantity: 5,
+                            unit: 'L',
+                            cost,
+                            balance: finalBalance,
+                            reason: 'Crop protection inventory was empty before herbicide and protection tasks.',
+                            weather: getWeatherLogData(nextWeeklyWeather, nextGameTime),
+                        });
+                        autoActions.push(`Purchased Maister Power herbicide ($1,450)`);
+                    }
+
+                    const hasGaucho = finalInventory.some(i => i.id === 'chem-gaucho' && i.quantity > 0);
+                    if (state.cornFocusMode && !hasGaucho && finalBalance > 5000) {
+                        const cost = 1700;
+                        finalBalance -= cost;
+                        finalInventory.push({ id: 'chem-gaucho', name: 'Gaucho', category: 'chemical', quantity: 2, unit: 'L', purchasePrice: 850 });
+                        gameLog('ADVANCE', `Auto-Procurement: Purchased Gaucho Seed Treatment (Balance: $${finalBalance})`, {
+                            mode: 'auto-procurement',
+                            itemName: 'Gaucho seed treatment',
+                            category: 'chemical',
+                            quantity: 2,
+                            unit: 'L',
+                            cost,
+                            balance: finalBalance,
+                            reason: 'Corn planting requires seed treatment before the planter can be dispatched.',
+                            weather: getWeatherLogData(nextWeeklyWeather, nextGameTime),
+                        });
+                        autoActions.push(`Purchased Gaucho seed treatment ($1,700)`);
+                    }
+
+                    // Check Fuel
+                    const fuelItem = finalInventory.find(i => i.id === 'fuel-diesel');
+                    if ((!fuelItem || fuelItem.quantity < 200) && finalBalance > 2000) {
+                        const cost = 1300;
+                        finalBalance -= cost;
+                        if (fuelItem) {
+                            fuelItem.quantity += 500;
+                        } else {
+                            finalInventory.push({ id: 'fuel-diesel', name: 'Diesel', category: 'fuel', quantity: 500, unit: 'L', purchasePrice: 2.6 });
+                        }
+                        gameLog('ADVANCE', `Auto-Procurement: Purchased Fuel (Balance: $${finalBalance})`, {
+                            mode: 'auto-procurement',
+                            itemName: 'Diesel fuel',
+                            category: 'fuel',
+                            quantity: 500,
+                            unit: 'L',
+                            cost,
+                            balance: finalBalance,
+                            reason: 'Fuel stock was below the reserve needed for tractor and harvester operations.',
+                            weather: getWeatherLogData(nextWeeklyWeather, nextGameTime),
+                        });
+                        autoActions.push(`Purchased Diesel fuel ($1,300)`);
+                    }
+
+                    // Check Corn Seeds
+                    if (state.cornFocusMode) {
+                        const hasCornSeeds = finalInventory.some(i => i.id === 'seed-corn-standard' && i.quantity > 0);
+                        if (!hasCornSeeds && finalBalance > 8000) {
+                            const cost = 1400;
+                            finalBalance -= cost;
+                            finalInventory.push({ id: 'seed-corn-standard', name: 'Field Corn Seed', category: 'seed', quantity: 5, unit: 'bag (1 ha)', purchasePrice: 280 });
+                            gameLog('ADVANCE', `Auto-Procurement: Purchased Corn Seeds (Balance: $${finalBalance})`, {
+                                mode: 'auto-procurement',
+                                itemName: 'Field Corn Seed',
+                                category: 'seed',
+                                quantity: 5,
+                                unit: 'bag (1 ha)',
+                                cost,
+                                balance: finalBalance,
+                                reason: 'Corn seed inventory was empty while planting tasks were expected this season.',
+                                weather: getWeatherLogData(nextWeeklyWeather, nextGameTime),
+                            });
+                            autoActions.push(`Purchased Field Corn Seeds ($1,400)`);
+                        }
+                    }
+                }
+
+                // 2. Equipment Auto-Maintenance
+                let updatedEquipment: EquipmentItem[] = state.equipment.map((eq): EquipmentItem => {
+                    if (eq.status === 'maintenance') {
+                        // If Auto-Ops is on, 80% chance to finish maintenance early (simulate priority service)
+                        if (state.isAutoFieldOpsEnabled || Math.random() < 0.55) {
+                            return { ...eq, status: 'ready' as const };
+                        }
+                        return eq;
+                    }
+                    const breakdownRisk = eq.category === 'harvester' ? 0.15 : eq.category === 'tractor' ? 0.12 : 0.08;
+                    return Math.random() < breakdownRisk ? { ...eq, status: 'maintenance' as const } : eq;
+                });
+                
                 const updatedGameFields = fieldStore.gameFields.map(field => {
                     let grown = advanceFieldGrowth(field, state.cornFocusMode, newSeason);
 
                     // Background auto-scouting logic
                     if (state.cornFocusMode && state.isAutoScoutingEnabled) {
+                        // ... (auto-scouting logic remains same)
                         const isCorn = grown.crop?.toLowerCase().includes('corn') ||
                             (!grown.crop || grown.crop === 'None' || grown.crop === 'Unplanted');
 
                         if (isCorn && grown.isCornSuitable !== false) {
-                            // Automatically scout this field
                             grown = {
                                 ...grown,
                                 isScouted: true,
                                 lastFlightDate: new Date().toISOString().split('T')[0]
                             };
-
-                            // Map existing stage to perform pseudo-recording
-                            const currentBbch = grown.bbchStage || '00';
-
-                            // We don't have direct access to CORN_REFERENCE_STAGES here without another import, 
-                            // but we can trust the field's updated bbchStage to be accurate.
                             ScoutingStorage.recordAutoWeeklyRun({
                                 fieldId: grown.id,
                                 fieldName: grown.name,
-                                // we mock planned/performed for the sake of the store
-                                planned: {
-                                    acres: grown.acres,
-                                    routePattern: 'grid',
-                                    captureProfile: 'corn',
-                                    estimatedDurationMinutes: 10,
-                                    estimatedBatteryUsage: 10,
-                                    captureBands: ['RGB', 'NIR', 'RedEdge'],
-                                    droneHeightM: 80,
-                                    flightSpeedMps: 12,
-                                    frontImageOverlapPct: 75,
-                                    sideImageOverlapPct: 70,
-                                    groundSamplingDistanceCm: 1.5,
-                                },
-                                performed: {
-                                    acresCovered: grown.acres,
-                                    durationMinutes: 10,
-                                    batteryUsed: 10,
-                                    averageSpeedMph: 15,
-                                    groundResolutionIn: 0.5,
-                                    captureBands: ['RGB', 'NIR', 'RedEdge'],
-                                    droneHeightM: 80,
-                                    flightSpeedMps: 12,
-                                    frontImageOverlapPct: 75,
-                                    sideImageOverlapPct: 70,
-                                },
-                                detectedStageId: 'AUTO_DETECT', // Fallback, timeline component resolves by BBCH
-                                detectedBbch: currentBbch,
+                                planned: buildPlannedAerialParams({ acres: grown.acres, routePattern: 'grid', captureProfile: 'corn' }),
+                                performed: buildPerformedAerialParams({ acresCovered: grown.acres, captureBands: ['RGB', 'NIR', 'RedEdge'] }),
+                                detectedStageId: 'AUTO_DETECT',
+                                detectedBbch: grown.bbchStage || '00',
                                 gameYear: newYear,
                                 gameSeason: newSeason,
                                 gameWeek: newWeek,
@@ -1578,93 +2166,140 @@ export const useGameStore = create<GameStore>()(persist(
                     }
 
                     if (grown.farmingStage === 'growing' || grown.farmingStage === 'harvest_ready') {
-                        // Dynamic Disease Outbreak Logic based on past week's weather
-                        let currentPressure = grown.diseasePressure || 0;
-                        const rainChance = state.weeklyWeather.precipitationChance;
+                        const pressure = applySeasonalPressure(grown, nextWeeklyWeather);
+                        grown.diseasePressure = pressure.diseasePressure;
+                        grown.diseaseOutbreak = pressure.diseaseOutbreak;
+                        grown.weedPressure = pressure.weedPressure;
+                        grown.ndviScore = Math.max(0, Math.min(0.95, Math.round(((grown.ndviScore || 0) + pressure.ndviDelta) * 100) / 100));
+                        grown.healthStatus = pressure.healthStatus;
+                        grown.inputStatus = {
+                            needsWater: pressure.needsWater,
+                            needsNutrients: pressure.needsNutrients,
+                            needsProtection: pressure.needsProtection,
+                        };
+                    }
 
-                        if (rainChance >= 50) {
-                            // Heavy rain increases disease pressure rapidly
-                            currentPressure += Math.floor(Math.random() * 10) + 15; // +15 to 25
-                        } else if (rainChance < 20) {
-                            // Dry weather reduces pressure slowly
-                            currentPressure = Math.max(0, currentPressure - 10);
-                        }
+                    // Comprehensive Auto-Ops Logic
+                    if (state.isAutoFieldOpsEnabled) {
+                        const recommended = getRecommendedOperation(grown, updatedEquipment, finalInventory, nextGameTime, nextWeeklyWeather, 2, state.cornFocusMode);
+                        
+                        if (recommended && recommended.operationId) {
+                            const opId = recommended.operationId;
+                            const isService = opId.startsWith('serv-');
+                            const isDirectOp = opId.startsWith('op-');
+                            const weatherCheck = canWeatherRunOperation(opId, nextWeeklyWeather, nextGameTime);
 
-                        // Cap at 100
-                        currentPressure = Math.min(100, currentPressure);
-                        grown.diseasePressure = currentPressure;
-
-                        // Check for outbreak trigger if pressure is high and no active outbreak
-                        if (currentPressure > 70 && !grown.diseaseOutbreak) {
-                            if (Math.random() < 0.3) {
-                                grown.diseaseOutbreak = true;
-                                if (!grown.inputStatus) {
-                                    grown.inputStatus = { needsNutrients: false, needsWater: false, needsProtection: true };
-                                } else {
-                                    grown.inputStatus.needsProtection = true;
+                            if (weatherCheck.allowed && (isService || isDirectOp)) {
+                                // Service handling: triggered by Auto-Booking
+                                if (isService && state.isAutoBookingEnabled) {
+                                    const service = SERVICES.find(s => s.id === opId);
+                                    const cost = service ? (service.pricePerHectare * grown.acres) : 500;
+                                    if (finalBalance >= cost) {
+                                        const operationForExecution = mapServiceToOperation(opId);
+                                        const fieldBeforeOperation = grown;
+                                        const result = applyOperation(fieldBeforeOperation, operationForExecution, state.cornFocusMode);
+                                        if (result.success && result.field) {
+                                            grown = result.field;
+                                            finalBalance -= cost;
+                                            const resolved = resolveChallengesForOperation(
+                                                currentWeeklyChallenges,
+                                                grown.id,
+                                                operationForExecution,
+                                                state.gameTime,
+                                                completedChallengeHistory
+                                            );
+                                            currentWeeklyChallenges = resolved.challenges;
+                                            completedChallengeHistory = resolved.completedChallengeHistory;
+                                            gameLog('OPERATION', `Auto-Booking completed: ${recommended.title} for "${fieldBeforeOperation.name}"`, {
+                                                ...getOperationLogData(fieldBeforeOperation, operationForExecution, result.field, nextWeeklyWeather, nextGameTime, cost, 'auto-booking', recommended.description || 'A service provider was booked because the weekly challenge recommended a contractor-assisted operation.'),
+                                                serviceId: opId,
+                                                serviceTitle: recommended.title,
+                                            });
+                                            autoActions.push(`Booked ${recommended.title} for ${grown.name} ($${cost.toLocaleString()})`);
+                                        }
+                                    }
+                                } 
+                                // Direct Op handling: triggered by Auto-Ops
+                                else if (isDirectOp && state.isAutoFieldOpsEnabled) {
+                                    const validation = canPerformOperation(grown, opId, state.cornFocusMode);
+                                    if (validation.allowed) {
+                                        const fieldBeforeOperation = grown;
+                                        const result = applyOperation(fieldBeforeOperation, opId, state.cornFocusMode);
+                                        if (result.success && result.field) {
+                                            grown = result.field;
+                                            const resolved = resolveChallengesForOperation(
+                                                currentWeeklyChallenges,
+                                                grown.id,
+                                                opId,
+                                                state.gameTime,
+                                                completedChallengeHistory
+                                            );
+                                            currentWeeklyChallenges = resolved.challenges;
+                                            completedChallengeHistory = resolved.completedChallengeHistory;
+                                            gameLog('OPERATION', `Auto-Ops completed: ${recommended.title} for "${fieldBeforeOperation.name}"`, {
+                                                ...getOperationLogData(fieldBeforeOperation, opId, result.field, nextWeeklyWeather, nextGameTime, 0, 'auto-ops', recommended.description || 'Auto-Ops executed this recommended in-house field operation.'),
+                                                serviceTitle: recommended.title,
+                                            });
+                                            autoActions.push(`Executed ${recommended.title} for ${grown.name}`);
+                                        }
+                                    }
                                 }
+                            } else if (!weatherCheck.allowed) {
+                                autoActions.push(`Delayed ${recommended.title}: ${weatherCheck.reason}.`);
                             }
                         }
-
-                        // Apply damage if outbreak is active
-                        if (grown.diseaseOutbreak) {
-                            grown.ndviScore = Math.max(0, Math.round((grown.ndviScore - 0.05) * 100) / 100);
-                        }
-
-                        if (grown.farmingStage === 'growing') {
-                            const rand = Math.random();
-                            // Only update water and nutrients randomly now, protection is handled above
-                            grown.inputStatus = {
-                                needsWater: rand < 0.35,
-                                needsNutrients: rand >= 0.35 && rand < 0.5,
-                                needsProtection: grown.inputStatus?.needsProtection || false, // keep existing protection state
-                            };
-                            grown.weedPressure = rand >= 0.5 && rand < 0.68
-                                ? (Math.random() > 0.5 ? 'high' : 'medium')
-                                : (Math.random() > 0.65 ? 'low' : 'none');
+                    } else if (state.isAutoIrrigationEnabled && grown.farmingStage === 'growing') {
+                        // Legacy individual auto-irrigation (if ops is off)
+                        const precipChance = nextWeeklyWeather.precipitationChance;
+                        const soilMoisture = grown.soilMoisture ?? (grown.inputStatus.needsWater ? 20 : 50);
+                        if (soilMoisture < 30 && precipChance < 40) {
+                            const fieldBeforeOperation = grown;
+                            const result = applyOperation(fieldBeforeOperation, 'serv-irrigate', state.cornFocusMode);
+                            if (result.success && result.field) {
+                                grown = result.field;
+                                const resolved = resolveChallengesForOperation(
+                                    currentWeeklyChallenges,
+                                    grown.id,
+                                    'serv-irrigate',
+                                    state.gameTime,
+                                    completedChallengeHistory
+                                );
+                                currentWeeklyChallenges = resolved.challenges;
+                                completedChallengeHistory = resolved.completedChallengeHistory;
+                                gameLog('OPERATION', `Auto-Irrigation completed on "${fieldBeforeOperation.name}"`, {
+                                    ...getOperationLogData(fieldBeforeOperation, 'serv-irrigate', result.field, nextWeeklyWeather, nextGameTime, 0, 'auto-irrigation', `Soil moisture was ${soilMoisture}% and rain probability was only ${precipChance}%, so irrigation was triggered to prevent crop stress.`),
+                                    soilMoisture,
+                                });
+                                autoActions.push(`Auto-Irrigated ${grown.name}`);
+                            }
                         }
                     }
 
                     return grown;
                 });
 
-                // Batch update fields
-                // Note: fieldStore.setFields replaces ALL fields. 
-                // We need to be careful not to wipe demo fields if they are in 'fields' but we are editing 'gameFields'.
-                // fieldStore has separate 'gameFields'.
-                // We need a way to setGameFields directly or update them one by one.
-                // fieldStore.setFields sets 'fields', not 'gameFields'.
-                // We should add setGameFields to FieldStore or use updateField loop.
-                // For efficiency, let's assume we can update the store state directly via a new action if possible, 
-                // or just loop updateField. Loop is fine for < 100 fields.
+                // Update players with final balance (including auto-procurement and auto-ops costs)
+                let playerWithProcurement = state.players.map(p => {
+                    if (p.id === state.currentPlayerId) {
+                        return { ...p, balance: finalBalance };
+                    }
+                    return p;
+                });
 
+                // Batch update fields
                 updatedGameFields.forEach(f => {
                     fieldStore.updateField(f.id, f);
                 });
 
                 // Remove expired rentals
                 const updatedRentals = state.activeRentals.filter(r => r.expiresAtWeek > newWeek); // Simple check
-                const completed = state.weeklyChallenges.filter(c => c.status === 'completed').length;
-                const missed = state.weeklyChallenges.filter(c => c.status === 'open').length;
-                const nextGameTime: GameTime = { year: newYear, season: newSeason, week: newWeek };
-                const nextWeeklyWeather = generateWeeklyWeather(nextGameTime);
+                const completed = currentWeeklyChallenges.filter(c => c.status === 'completed').length;
+                const missed = currentWeeklyChallenges.filter(c => c.status === 'open').length;
 
-                const updatedEquipment: EquipmentItem[] = state.equipment.map((eq): EquipmentItem => {
-                    if (eq.status === 'maintenance') {
-                        return Math.random() < 0.55 ? { ...eq, status: 'ready' as const } : eq;
-                    }
-                    const breakdownRisk = eq.category === 'harvester'
-                        ? 0.15
-                        : eq.category === 'tractor'
-                            ? 0.12
-                            : eq.category === 'drone'
-                                ? 0.08
-                                : 0.06;
-                    return Math.random() < breakdownRisk ? { ...eq, status: 'maintenance' as const } : eq;
-                });
+
 
                 const maintenanceExpense = updatedEquipment.reduce((sum, eq) => sum + (eq.maintainanceCostPerWeek || 0), 0);
-                const updatedPlayers = state.players.map(player => {
+                const updatedPlayersFinal = playerWithProcurement.map(player => {
                     if (player.id !== state.currentPlayerId) return player;
                     return {
                         ...player,
@@ -1677,10 +2312,17 @@ export const useGameStore = create<GameStore>()(persist(
                 const refreshedChallenges = generateChallengesForFields(
                     updatedGameFields,
                     updatedEquipment,
-                    state.inventory,
+                    finalInventory,
                     nextGameTime,
                     nextWeeklyWeather,
-                    2
+                    2,
+                    state.isAutoIrrigationEnabled,
+                    state.isAutoProcurementEnabled,
+                    state.isAutoFieldOpsEnabled,
+                    state.isAutoBookingEnabled,
+                    state.cornFocusMode,
+                    currentWeeklyChallenges,
+                    completedChallengeHistory
                 );
 
                 // Winter Kill Warning Logic
@@ -1696,9 +2338,11 @@ export const useGameStore = create<GameStore>()(persist(
                     operatorCapacity: 2,
                     operatorAssignmentsUsed: 0,
                     equipment: updatedEquipment,
-                    players: updatedPlayers,
+                    players: updatedPlayersFinal,
+                    inventory: finalInventory,
                     activeRentals: updatedRentals,
                     weeklyChallenges: refreshedChallenges,
+                    completedChallengeHistory,
                     pendingOrders: [],
                     weekSummary: {
                         periodLabel: `Y${year} ${season} W${week}`,
@@ -1706,32 +2350,91 @@ export const useGameStore = create<GameStore>()(persist(
                         missed,
                         message: (completed >= missed
                             ? `Strong operational week. Maintenance cost: $${maintenanceExpense.toLocaleString()}.`
-                            : `You missed key operations. Maintenance cost this rollover: $${maintenanceExpense.toLocaleString()}.`) + pendingSummaryMsg + seasonalWarning,
+                            : `You missed key operations. Maintenance cost this rollover: $${maintenanceExpense.toLocaleString()}.`) + 
+                            pendingSummaryMsg + seasonalWarning + 
+                            (autoActions.length > 0 ? `\n\nAutopilot Actions:\n• ${autoActions.join('\n• ')}` : ""),
                     },
                 };
             });
         },
 
         completeChallenge: (challengeId) => {
-            set((state) => ({
-                weeklyChallenges: state.weeklyChallenges.map(ch =>
-                    ch.id === challengeId ? { ...ch, status: 'completed' } : ch
-                ),
-            }));
+            set((state) => {
+                const challenge = state.weeklyChallenges.find(ch => ch.id === challengeId);
+                if (challenge?.challengeTemplateId) {
+                    const field = challenge.fieldId
+                        ? useFieldStore.getState().gameFields.find(f => f.id === challenge.fieldId)
+                        : null;
+                    gameLog('CHALLENGE', `Seasonal challenge completed: ${challenge.title}`, {
+                        challengeId: challenge.id,
+                        challengeTemplateId: challenge.challengeTemplateId,
+                        category: challenge.category,
+                        severity: challenge.severity,
+                        fieldId: challenge.fieldId,
+                        fieldName: field?.name,
+                        operationId: challenge.operationId,
+                        mitigationDescription: challenge.mitigationDescription,
+                        mitigationCost: challenge.mitigationCost,
+                        yieldImpactPct: challenge.yieldImpactPct,
+                        yieldSavedPct: challenge.yieldImpactPct,
+                        requiresInput: challenge.requiresInput,
+                        year: state.gameTime.year,
+                        season: state.gameTime.season,
+                        gameWeek: state.gameTime.week,
+                    });
+                }
+
+                const completedChallengeHistory = recordCompletedSeasonalChallenge(
+                    state.completedChallengeHistory || [],
+                    challenge,
+                    state.gameTime
+                );
+
+                return {
+                    weeklyChallenges: state.weeklyChallenges.map(ch =>
+                        ch.id === challengeId ? { ...ch, status: 'completed' } : ch
+                    ),
+                    completedChallengeHistory,
+                };
+            });
         },
 
         refreshWeeklyChallenges: () => {
             const fieldStore = useFieldStore.getState();
-            const { equipment, inventory, gameTime, weeklyWeather, operatorCapacity, operatorAssignmentsUsed } = get();
+            const { 
+                equipment, inventory, gameTime, operatorCapacity, operatorAssignmentsUsed, 
+                isAutoIrrigationEnabled, isAutoProcurementEnabled, isAutoFieldOpsEnabled, isAutoBookingEnabled,
+                cornFocusMode,
+                weeklyChallenges,
+                completedChallengeHistory,
+            } = get();
+
+            // Always regenerate weather for the current week to avoid stale persisted weather
+            const freshWeather = generateWeeklyWeather(gameTime);
+
+            gameLog('CHALLENGE', `refreshWeeklyChallenges: Y${gameTime.year} ${gameTime.season} W${gameTime.week}`, {
+                fields: fieldStore.gameFields.length,
+                cornFocusMode: cornFocusMode,
+                fieldwork: freshWeather.fieldworkOpen,
+                spray: freshWeather.sprayOpen,
+            });
+
             set({
+                weeklyWeather: freshWeather,
                 weeklyChallenges: generateChallengesForFields(
                     fieldStore.gameFields,
                     equipment,
                     inventory,
                     gameTime,
-                    weeklyWeather,
+                    freshWeather,
                     Math.max(0, operatorCapacity - operatorAssignmentsUsed),
-                    get().cornFocusMode
+                    isAutoIrrigationEnabled,
+                    isAutoProcurementEnabled,
+                    isAutoFieldOpsEnabled,
+                    isAutoBookingEnabled,
+                    cornFocusMode,
+                    weeklyChallenges,
+                    completedChallengeHistory
                 )
             });
         },
@@ -1740,16 +2443,39 @@ export const useGameStore = create<GameStore>()(persist(
 
         openWeeklyPlanner: () => {
             const fieldStore = useFieldStore.getState();
-            const { equipment, inventory, gameTime, weeklyWeather, operatorCapacity, operatorAssignmentsUsed } = get();
+            const { 
+                equipment, inventory, gameTime, operatorCapacity, operatorAssignmentsUsed, 
+                isAutoIrrigationEnabled, isAutoProcurementEnabled, isAutoFieldOpsEnabled, isAutoBookingEnabled,
+                cornFocusMode,
+                weeklyChallenges,
+                completedChallengeHistory,
+            } = get();
+
+            // Always regenerate weather to avoid stale persisted state
+            const freshWeather = generateWeeklyWeather(gameTime);
+
+            gameLog('CHALLENGE', `openWeeklyPlanner: Y${gameTime.year} ${gameTime.season} W${gameTime.week}`, {
+                fieldwork: freshWeather.fieldworkOpen, spray: freshWeather.sprayOpen,
+                fields: fieldStore.gameFields.map(f => f.name + ':' + f.farmingStage),
+            });
+
             set({
                 isWeeklyPlannerOpen: true,
+                weeklyWeather: freshWeather,
                 weeklyChallenges: generateChallengesForFields(
                     fieldStore.gameFields,
                     equipment,
                     inventory,
                     gameTime,
-                    weeklyWeather,
-                    Math.max(0, operatorCapacity - operatorAssignmentsUsed)
+                    freshWeather,
+                    Math.max(0, operatorCapacity - operatorAssignmentsUsed),
+                    get().isAutoIrrigationEnabled,
+                    get().isAutoProcurementEnabled,
+                    get().isAutoFieldOpsEnabled,
+                    get().isAutoBookingEnabled,
+                    get().cornFocusMode,
+                    weeklyChallenges,
+                    completedChallengeHistory
                 ),
             });
         },
@@ -1801,17 +2527,23 @@ export const useGameStore = create<GameStore>()(persist(
                 inventory: [],
                 equipment: [],
                 gameTime: baseTime,
-                weeklyWeather: generateWeeklyWeather(baseTime),
+                weeklyWeather: generateWeeklyWeather(baseTime, false),
                 operatorCapacity: 2,
                 operatorAssignmentsUsed: 0,
                 activeRentals: [],
                 weeklyChallenges: [],
+                completedChallengeHistory: [],
                 weekSummary: null,
                 isWeeklyPlannerOpen: false,
                 guideTargetId: null,
                 guideMessage: null,
                 deletedFieldIds: [],
+                seasonLog: [],
                 isAutoScoutingEnabled: false,
+                isAutoIrrigationEnabled: false,
+                isAutoProcurementEnabled: false,
+                isAutoFieldOpsEnabled: false,
+                isAutoBookingEnabled: false,
             });
 
             return { success: true };
@@ -1820,11 +2552,56 @@ export const useGameStore = create<GameStore>()(persist(
         setGuideTarget: (targetId, message = null) => set({ guideTargetId: targetId, guideMessage: message }),
         clearGuide: () => set({ guideTargetId: null, guideMessage: null }),
 
-        toggleAutoScouting: () => set(state => ({ isAutoScoutingEnabled: !state.isAutoScoutingEnabled }))
+        toggleAutoScouting: () => set(state => ({ isAutoScoutingEnabled: !state.isAutoScoutingEnabled })),
+        toggleAutoIrrigation: () => set(state => ({ isAutoIrrigationEnabled: !state.isAutoIrrigationEnabled })),
+        toggleAutoProcurement: () => set(state => ({ isAutoProcurementEnabled: !state.isAutoProcurementEnabled })),
+        toggleAutoFieldOps: () => set(state => ({ isAutoFieldOpsEnabled: !state.isAutoFieldOpsEnabled })),
+        toggleAutoBooking: () => set(state => ({ isAutoBookingEnabled: !state.isAutoBookingEnabled }))
     }),
     {
         name: 'agri-os-game-storage',
-        storage: createJSONStorage(() => localStorage),
+        storage: createJSONStorage(() =>
+            typeof window !== 'undefined' ? localStorage : {
+                getItem: () => null,
+                setItem: () => undefined,
+                removeItem: () => undefined,
+            }
+        ),
+        partialize: (state) => {
+        // Don't persist seasonLog — it should reset each season
+        const { seasonLog, ...rest } = state;
+        return rest;
+    },
+    onRehydrateStorage: () => (state) => {
+            // After rehydrating from localStorage, regenerate weather if the model is stale
+            if (state && state.gameTime) {
+                const normalizedTime: GameTime = {
+                    year: state.gameTime.year,
+                    season: state.gameTime.season,
+                    week: state.gameTime.week,
+                };
+                const freshWeather = generateWeeklyWeather(normalizedTime);
+                gameLog('ADVANCE', 'Store rehydrated — regenerating weather with current model', {
+                    gameTime: normalizedTime,
+                    oldFieldwork: state.weeklyWeather?.fieldworkOpen,
+                    newFieldwork: freshWeather.fieldworkOpen,
+                    oldSpray: state.weeklyWeather?.sprayOpen,
+                    newSpray: freshWeather.sprayOpen,
+                });
+                useGameStore.setState({ gameTime: normalizedTime, weeklyWeather: freshWeather });
+            }
+        },
     }
 )
 );
+
+// Season activity log: subscribe directly to gameLog. Delivery is queued by game-debug,
+// so logs emitted inside Zustand set callbacks are appended after the state update settles.
+if (typeof window !== 'undefined') {
+    subscribeGameLog((entry) => {
+        const state = useGameStore.getState();
+        if (state && Array.isArray((state as any).seasonLog)) {
+            useGameStore.setState({ seasonLog: [...(state as any).seasonLog.slice(-499), entry] } as any);
+        }
+    }, 'season-activity-log-store');
+}

@@ -12,7 +12,8 @@ import {
     AlertCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { FIELDS } from '@/lib/mock-data';
+import { useFieldStore } from '@/lib/field-store';
+import { useGameStore } from '@/lib/game-store';
 import {
     ObservationType,
     SeverityLevel,
@@ -30,6 +31,9 @@ interface QuickScoutModalProps {
 }
 
 export function QuickScoutModal({ isOpen, onClose, preselectedFieldId }: QuickScoutModalProps) {
+    const { getFieldsForMode } = useFieldStore();
+    const { gameMode } = useGameStore();
+    const activeFields = getFieldsForMode(gameMode ? 'strategy' : 'demo');
     const [selectedFieldId, setSelectedFieldId] = useState<string>(preselectedFieldId || '');
     const [observationType, setObservationType] = useState<ObservationType>('pest');
     const [severity, setSeverity] = useState<SeverityLevel>('low');
@@ -202,10 +206,11 @@ export function QuickScoutModal({ isOpen, onClose, preselectedFieldId }: QuickSc
                                     <select
                                         value={selectedFieldId}
                                         onChange={(e) => setSelectedFieldId(e.target.value)}
-                                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                        disabled={activeFields.length === 0}
+                                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
-                                        <option value="">Select a field...</option>
-                                        {FIELDS.map(field => (
+                                        <option value="">{activeFields.length === 0 ? 'No fields available in this mode' : 'Select a field...'}</option>
+                                        {activeFields.map(field => (
                                             <option key={field.id} value={field.id}>
                                                 {field.name} - {field.crop}
                                             </option>

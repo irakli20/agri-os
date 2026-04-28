@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useOrchestratorStore } from '@/lib/orchestrator';
 import { 
     Scan,
     CheckCircle2,
@@ -21,54 +22,131 @@ interface TwinStatusProps {
     className?: string;
 }
 
+interface TwinSummaryResponse {
+    mode: 'summary';
+    orchestratorTwin?: {
+        syncStatus?: SyncStatus;
+        lastSync?: string | Date;
+        calibrationStatus?: {
+            accuracy?: number;
+            lastCalibration?: string | Date;
+            nextCalibration?: string | Date;
+            modelVersion?: string;
+        };
+        driftReports?: DriftReport[];
+    };
+    stateEnvelope?: Record<string, Array<{
+        metric: string;
+        value: number;
+        unit: string;
+    }>>;
+    freshness?: Array<{
+        sensorId: string;
+        fieldId: string;
+        sensorType: string;
+        lastSeenAt: string;
+        ageMinutes: number;
+        thresholdMinutes: number;
+        isStale: boolean;
+    }>;
+    reconciliations?: Array<{
+        metric: string;
+        sensorValue?: number;
+        manualValue?: number;
+        delta?: number;
+        deltaPercent?: number;
+        resolvedEnvelope?: {
+            unit?: string;
+        };
+    }>;
+}
+
 export function TwinStatus({ className }: TwinStatusProps) {
-    // Mock twin state - would come from API
-    const [syncStatus, setSyncStatus] = React.useState<SyncStatus>('synced');
-    const [lastSync, setLastSync] = React.useState('2 minutes ago');
+    const orchestratorTwin = useOrchestratorStore((state) => state.digitalTwin);
+    const [syncStatus, setSyncStatus] = React.useState<SyncStatus>(orchestratorTwin?.syncStatus || 'synced');
+    const [lastSync, setLastSync] = React.useState('Unavailable');
     const [calibrationStatus, setCalibrationStatus] = React.useState({
-        accuracy: 94,
-        lastCalibrated: '3 days ago',
-        nextCalibration: 'In 11 days',
-        modelVersion: 'v2.4.1',
+        accuracy: orchestratorTwin?.calibrationStatus?.accuracy || 0,
+        lastCalibrated: orchestratorTwin?.calibrationStatus?.lastCalibration
+            ? new Date(orchestratorTwin.calibrationStatus.lastCalibration).toLocaleString()
+            : 'Unavailable',
+        nextCalibration: orchestratorTwin?.calibrationStatus?.nextCalibration
+            ? new Date(orchestratorTwin.calibrationStatus.nextCalibration).toLocaleString()
+            : 'Unavailable',
+        modelVersion: orchestratorTwin?.calibrationStatus?.modelVersion || 'unknown',
     });
+    const [driftReports, setDriftReports] = React.useState<DriftReport[]>(orchestratorTwin?.driftReports || []);
+    const [comparisonData, setComparisonData] = React.useState<Array<{ metric: string; virtual: number; real: number; diff: number; unit: string }>>([]);
 
-    const driftReports: DriftReport[] = [
-        {
-            id: 'drift-1',
-            fieldId: 'field-3',
-            detectedAt: new Date(Date.now() - 1000 * 60 * 30),
-            metric: 'Soil Moisture',
-            expectedValue: 65,
-            actualValue: 58,
-            divergence: 10.8,
-            severity: 'low',
-            possibleCauses: ['Sensor calibration drift', 'Irrigation timing variation'],
-            recommendedActions: ['Recalibrate soil sensors', 'Adjust irrigation schedule'],
-            acknowledged: false,
-        },
-        {
-            id: 'drift-2',
-            fieldId: 'field-7',
-            detectedAt: new Date(Date.now() - 1000 * 60 * 60 * 2),
-            metric: 'Crop Growth Rate',
-            expectedValue: 12.5,
-            actualValue: 10.2,
-            divergence: 18.4,
-            severity: 'medium',
-            possibleCauses: ['Weather variance', 'Nutrient deficiency not modeled'],
-            recommendedActions: ['Review weather model', 'Soil sample analysis'],
-            acknowledged: true,
-        },
-    ];
+    React.useEffect(() => {
+        let cancelled = false;
 
-    const comparisonData = [
-        { metric: 'Soil Temperature', virtual: 18.5, real: 18.3, diff: -0.2, unit: '°C' },
-        { metric: 'Moisture Content', virtual: 68, real: 65, diff: -3, unit: '%' },
-        { metric: 'pH Level', virtual: 6.8, real: 6.9, diff: 0.1, unit: '' },
-        { metric: 'Nitrogen (N)', virtual: 45, real: 42, diff: -3, unit: 'mg/kg' },
-        { metric: 'Crop Height', virtual: 45.2, real: 43.8, diff: -1.4, unit: 'cm' },
-        { metric: 'NDVI Index', virtual: 0.72, real: 0.68, diff: -0.04, unit: '' },
-    ];
+        const loadTwin = async () => {
+            try {
+                const response = await fetch('/api/twin');
+                if (!response.ok) return;
+                const payload = await response.json() as TwinSummaryResponse;
+                if (cancelled || payload.mode !== 'summary') return;
+
+                const twin = payload.orchestratorTwin;
+                if (twin?.syncStatus) {
+                    setSyncStatus(twin.syncStatus);
+                }
+                if (twin?.lastSync) {
+                    setLastSync(new Date(twin.lastSync).toLocaleString());
+                }
+                if (twin?.calibrationStatus) {
+                    setCalibrationStatus({
+                        accuracy: twin.calibrationStatus.accuracy || 0,
+                        lastCalibrated: twin.calibrationStatus.lastCalibration
+                            ? new Date(twin.calibrationStatus.lastCalibration).toLocaleString()
+                            : 'Unavailable',
+                        nextCalibration: twin.calibrationStatus.nextCalibration
+                            ? new Date(twin.calibrationStatus.nextCalibration).toLocaleString()
+                            : 'Unavailable',
+                        modelVersion: twin.calibrationStatus.modelVersion || 'unknown',
+                    });
+                }
+                setDriftReports(twin?.driftReports || []);
+
+                const reconciliations = payload.reconciliations || [];
+                const realComparison = reconciliations
+                    .filter((item) => typeof item.sensorValue === 'number' && typeof item.manualValue === 'number')
+                    .slice(0, 6)
+                    .map((item) => ({
+                        metric: item.metric,
+                        virtual: Number(item.sensorValue),
+                        real: Number(item.manualValue),
+                        diff: Number(item.manualValue) - Number(item.sensorValue),
+                        unit: item.resolvedEnvelope?.unit || '',
+                    }));
+
+                if (realComparison.length > 0) {
+                    setComparisonData(realComparison);
+                    return;
+                }
+
+                const fallbackEnvelope = Object.values(payload.stateEnvelope || {})
+                    .flat()
+                    .slice(0, 6)
+                    .map((item) => ({
+                        metric: item.metric,
+                        virtual: Number(item.value),
+                        real: Number(item.value),
+                        diff: 0,
+                        unit: item.unit || '',
+                    }));
+                setComparisonData(fallbackEnvelope);
+            } catch {
+                // Keep existing store-backed defaults if fetch fails.
+            }
+        };
+
+        void loadTwin();
+        return () => {
+            cancelled = true;
+        };
+    }, [orchestratorTwin]);
 
     const getSyncColor = (status: SyncStatus) => {
         switch (status) {
@@ -151,6 +229,12 @@ export function TwinStatus({ className }: TwinStatusProps) {
                         </div>
                         <span className="text-xs text-muted-foreground">{driftReports.filter(r => !r.acknowledged).length} unacknowledged</span>
                     </div>
+                    
+                    {driftReports.length === 0 && (
+                        <div className="rounded-xl border border-dashed border-white/15 p-4 text-sm text-muted-foreground">
+                            No drift reports detected.
+                        </div>
+                    )}
                     
                     {driftReports.map((report) => (
                         <div key={report.id} className={cn("p-4 rounded-xl border space-y-3",

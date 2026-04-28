@@ -300,7 +300,11 @@ export function PestDiseaseMonitorModal({ isOpen, onClose, fieldId }: PestDiseas
                                                 <div className="flex items-center gap-2">
                                                     <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
                                                         <div
-                                                            className="h-full bg-gradient-to-r from-green-500 to-red-500"
+                                                            className={cn(
+                                                                "h-full transition-colors",
+                                                                disease.weatherFavorability >= 70 ? "bg-red-500" :
+                                                                disease.weatherFavorability >= 40 ? "bg-yellow-500" : "bg-green-500"
+                                                            )}
                                                             style={{ width: `${disease.weatherFavorability}%` }}
                                                         />
                                                     </div>

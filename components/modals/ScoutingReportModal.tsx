@@ -24,8 +24,9 @@ interface ScoutingReportModalProps {
 }
 
 export function ScoutingReportModal({ isOpen, onClose, mission }: ScoutingReportModalProps) {
-    const { fields, gameFields, updateField } = useFieldStore();
+    const { getFieldsForMode, updateField } = useFieldStore();
     const { gameMode } = useGameStore();
+    const activeFields = getFieldsForMode(gameMode ? 'strategy' : 'demo');
     const [step, setStep] = useState(1);
     const [cropStage, setCropStage] = useState('V3');
     const [standCount, setStandCount] = useState('');
@@ -40,7 +41,6 @@ export function ScoutingReportModal({ isOpen, onClose, mission }: ScoutingReport
         // Simulate API call
         await new Promise(resolve => setTimeout(resolve, 1500));
 
-        const activeFields = gameMode ? gameFields : fields;
         const missionField = activeFields.find((field) => field.id === mission.fieldId);
         const detectedBbch = mapCropStageCodeToBbch(cropStage);
         const existingRun = ScoutingStorage.getLatestRunByMission(mission.id);

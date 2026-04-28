@@ -15,11 +15,11 @@ export function CornFocusToggle() {
                 className={cn(
                     "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
                     cornFocusMode
-                        ? "bg-yellow-500 text-black shadow-lg shadow-yellow-500/20"
+                        ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
                         : "text-muted-foreground hover:text-white hover:bg-white/5"
                 )}
             >
-                <Leaf className={cn("w-3.5 h-3.5", cornFocusMode ? "fill-black" : "")} />
+                <Leaf className={cn("w-3.5 h-3.5", cornFocusMode ? "fill-primary-foreground" : "")} />
                 CORN EXPERT
             </button>
             <button
@@ -27,7 +27,7 @@ export function CornFocusToggle() {
                 className={cn(
                     "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
                     !cornFocusMode
-                        ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
+                        ? "bg-white/15 text-white shadow-lg shadow-black/10"
                         : "text-muted-foreground hover:text-white hover:bg-white/5"
                 )}
             >

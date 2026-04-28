@@ -12,9 +12,11 @@ import { useMapStore } from '@/lib/map-store';
  * No field boundaries are shown - just a clean background
  */
 export function MapCanvas() {
+    const [mounted, setMounted] = React.useState(false);
+    React.useEffect(() => setMounted(true), []);
     const { viewState, setViewState, layers: storeLayers, basemapStyle, activeBand, layerOpacity } = useMapStore();
 
-    const handleViewStateChange = useCallback(
+    const handleViewStateChange = React.useCallback(
         ({ viewState: newViewState }: any) => {
             setViewState(newViewState);
         },
@@ -23,6 +25,7 @@ export function MapCanvas() {
 
     // Simple layers - no field boundaries on main dashboard
     const activeLayers = React.useMemo(() => {
+        if (!mounted) return [];
         const spectralLayer = new BitmapLayer({
             id: 'spectral-overlay',
             bounds: [-121.66, 36.67, -121.64, 36.69],

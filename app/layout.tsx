@@ -1,9 +1,6 @@
 import type { Metadata } from "next";
-import { Manrope } from "next/font/google";
 import "./globals.css";
 import { AI } from "./actions";
-
-const manrope = Manrope({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
     title: "Agri-OS | Generative Farm Management Platform",
@@ -17,7 +14,7 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="en" className="dark">
-            <body className={manrope.className}>
+            <body className="font-sans antialiased">
                 <AI>
                     {children}
                 </AI>

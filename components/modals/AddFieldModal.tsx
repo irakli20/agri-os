@@ -421,8 +421,10 @@ export function AddFieldModal({ isOpen, onClose, onSubmit }: AddFieldModalProps)
             acres: parseFloat(formData.acres) || 0,
             crop: formData.crop,
             plantingDate: formData.plantingDate || new Date().toISOString().split('T')[0],
-            ndviScore: 0.8, // Default starting score
-            healthStatus: 'good' as const,
+            ndviScore: 0.15,
+            healthStatus: 'attention' as const,
+            farmingStage: 'scouted' as const,
+            cropStage: 'none' as const,
             lastFlightDate: new Date().toISOString().split('T')[0],
             coordinates: coordinates,
             image: uploadedImage || '/ndvi-field.png'

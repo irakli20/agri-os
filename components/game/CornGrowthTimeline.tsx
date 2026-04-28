@@ -5,9 +5,11 @@ import Image from 'next/image';
 import { useGameStore } from '@/lib/game-store';
 import { useFieldStore } from '@/lib/field-store';
 import { cn } from '@/lib/utils';
-import { Activity, Beaker, Camera, ChevronLeft, ChevronRight, Clock3, ExternalLink, Leaf, MapPin, Plane, RefreshCcw, ShoppingCart } from 'lucide-react';
+import { Activity, Beaker, Calendar, Camera, ChevronLeft, ChevronRight, Clock3, ExternalLink, Leaf, MapPin, Plane, ShoppingCart, Droplets, Zap, ClipboardCheck, Tractor, Sprout, ShieldCheck, Wheat, Warehouse } from 'lucide-react';
 import { CORN_BBCH_STAGES } from '@/lib/game-logic/field-simulation';
-import { ScoutingStorage, buildPerformedAerialParams, buildPlannedAerialParams, type ScoutingRunRecord } from '@/lib/scouting-data';
+import { ScoutingStorage, buildPlannedAerialParams, type ScoutingRunRecord } from '@/lib/scouting-data';
+import { CORN_REFERENCE_STAGES, CORN_STAGE_IMAGE_ANCHOR_PCT, mapBbchToCornReferenceStage } from '@/lib/corn-strategy';
+import { StrategyActionButton, strategyActionClass, strategyNoticeClass } from '@/components/game/strategy-ui';
 
 interface Product {
     id: string;
@@ -25,160 +27,127 @@ const PRODUCTS: Product[] = [
     { id: 'maister_bio', name: 'Maister + Biopower', type: 'herbicide', brandColor: 'bg-orange-600/80', dosage: '0.15 kg/ha + 1.25 L/ha', ranges: [{ start: '12', end: '16' }], targetPests: 'Annual and perennial dicot weeds' },
     { id: 'maister_power', name: 'Maister Power', type: 'herbicide', brandColor: 'bg-orange-500/80', dosage: '1.25-1.5 L/ha', ranges: [{ start: '12', end: '16' }], targetPests: 'Broad-spectrum weed control' },
     { id: 'adengo', name: 'Adengo', type: 'herbicide', brandColor: 'bg-orange-300/80', dosage: '0.1 L/ha', ranges: [{ start: '11', end: '15' }], targetPests: 'Early post-emergence specialized control' },
-    { id: 'decis', name: 'Decis', type: 'insecticide', brandColor: 'bg-blue-600/80', dosage: '0.08-0.13 L/ha', ranges: [{ start: '13', end: '89' }], targetPests: 'Corn borer, Bollworm, Aphids' },
-    { id: 'decis_expert', name: 'Decis Expert', type: 'insecticide', brandColor: 'bg-blue-800/80', dosage: '0.4-0.7 L/ha', ranges: [{ start: '13', end: '89' }], targetPests: 'Premium broad-spectrum insecticide' },
-    { id: 'varigo', name: 'Varigo', type: 'insecticide', brandColor: 'bg-blue-900/80', dosage: '0.15 L/ha', ranges: [{ start: '13', end: '89' }], targetPests: 'High-performance pest management' },
+    { id: 'decis', name: 'Decis', type: 'insecticide', brandColor: 'bg-emerald-600/80', dosage: '0.08-0.13 L/ha', ranges: [{ start: '13', end: '89' }], targetPests: 'Corn borer, Bollworm, Aphids' },
+    { id: 'decis_expert', name: 'Decis Expert', type: 'insecticide', brandColor: 'bg-emerald-800/80', dosage: '0.4-0.7 L/ha', ranges: [{ start: '13', end: '89' }], targetPests: 'Premium broad-spectrum insecticide' },
+    { id: 'varigo', name: 'Varigo', type: 'insecticide', brandColor: 'bg-teal-800/80', dosage: '0.15 L/ha', ranges: [{ start: '13', end: '89' }], targetPests: 'High-performance pest management' },
     { id: 'urea_46', name: 'Urea 46% N', type: 'fertilizer', brandColor: 'bg-primary/80', dosage: '150 kg/ha', ranges: [{ start: '00', end: '16' }], targetPests: 'Essential Nitrogen for growth' },
     { id: 'npk_20_20_20', name: 'NPK 20-20-20', type: 'fertilizer', brandColor: 'bg-teal-600/80', dosage: '250 kg/ha', ranges: [{ start: '00', end: '39' }], targetPests: 'Pre-plant or starter nutrients' },
 ];
 
-interface CornReferenceStage {
+interface CornSeasonPhase {
     id: string;
     label: string;
-    bbchRef: string;
-    description: string;
-    image: string;
+    window: string;
+    intent: string;
+    stageIds: string[];
+    bbchStart?: number;
+    bbchEnd?: number;
+    Icon: React.ComponentType<{ className?: string }>;
 }
 
-const CORN_REFERENCE_STAGES: CornReferenceStage[] = [
+const CORN_SEASON_PHASES: CornSeasonPhase[] = [
     {
-        id: 'VE',
-        label: 'Emergence',
-        bbchRef: '11',
-        description: 'The first stage is emergence, when the coleoptile is fully visible and no fully developed leaves are present.',
-        image: '/assets/corn-growth/weatherstem/corn_growth1_orig.png',
+        id: 'recon',
+        label: 'Recon & Baseline',
+        window: 'Pre-plant',
+        intent: 'Aerial survey, soil sampling, field zones, and starting constraints.',
+        stageIds: ['fallow', 'scouted', 'aerial_surveyed', 'soil_tested'],
+        Icon: Plane,
     },
     {
-        id: 'V1',
-        label: 'First leaf fully developed',
-        bbchRef: '12',
-        description: 'V1 indicates full development of the first leaf collar. Vegetative stages are identified by the count of fully developed leaves.',
-        image: '/assets/corn-growth/weatherstem/corn_growth2_orig.png',
+        id: 'seedbed',
+        label: 'Seedbed Build',
+        window: 'Spring W1-W4',
+        intent: 'Plow, burndown, till, stock inputs, and prepare the planter pass.',
+        stageIds: ['plowed', 'pre_plant_treated', 'tilled'],
+        Icon: Tractor,
     },
     {
-        id: 'V2',
-        label: 'Second leaf fully developed',
-        bbchRef: '13',
-        description: 'Two leaves with visible collars.',
-        image: '/assets/corn-growth/weatherstem/corn_growth2_orig.png',
+        id: 'planting',
+        label: 'Planting',
+        window: 'Spring window',
+        intent: 'Seed treatment, planting, starter fertility, and stand establishment.',
+        stageIds: ['growing'],
+        bbchStart: 0,
+        bbchEnd: 5,
+        Icon: Sprout,
     },
     {
-        id: 'V4',
-        label: 'Fourth leaf stage',
-        bbchRef: '14',
-        description: 'Four leaves with visible collars.',
-        image: '/assets/corn-growth/weatherstem/corn_growth2_orig.png',
+        id: 'vegetative',
+        label: 'Vegetative Build',
+        window: 'VE-V14',
+        intent: 'Scout stand count, protect yield potential, top-dress nitrogen, and manage water.',
+        stageIds: ['growing'],
+        bbchStart: 11,
+        bbchEnd: 35,
+        Icon: Leaf,
     },
     {
-        id: 'V6',
-        label: 'Six-leaf stage',
-        bbchRef: '16',
-        description: 'Around V6, the growing point is above the soil surface and the earliest leaves begin to senesce.',
-        image: '/assets/corn-growth/weatherstem/corn_growth3_orig.png',
+        id: 'reproductive',
+        label: 'Pollination Risk',
+        window: 'VT-R3',
+        intent: 'Watch heat, water stress, silk timing, disease pressure, and insect risk.',
+        stageIds: ['growing'],
+        bbchStart: 53,
+        bbchEnd: 79,
+        Icon: ShieldCheck,
     },
     {
-        id: 'V10',
-        label: 'Ten-leaf stage',
-        bbchRef: '31',
-        description: 'At V10, ear shoots are visible and tassel development is underway.',
-        image: '/assets/corn-growth/weatherstem/corn_growth4_orig.png',
+        id: 'finish',
+        label: 'Drydown & Harvest',
+        window: 'R4-R6',
+        intent: 'Track grain fill, moisture, standability, harvest window, and combine booking.',
+        stageIds: ['growing', 'harvest_ready', 'harvested'],
+        bbchStart: 83,
+        bbchEnd: 89,
+        Icon: Wheat,
     },
     {
-        id: 'V12',
-        label: 'Twelve-leaf stage',
-        bbchRef: '33',
-        description: 'Twelve collared leaves.',
-        image: '/assets/corn-growth/weatherstem/corn_growth4_orig.png',
-    },
-    {
-        id: 'V14',
-        label: 'Fourteen-leaf stage',
-        bbchRef: '35',
-        description: 'Rapid growth and maximum water usage nearing.',
-        image: '/assets/corn-growth/weatherstem/corn_growth4_orig.png',
-    },
-    {
-        id: 'VT',
-        label: 'Tasseling',
-        bbchRef: '53',
-        description: 'VT is the last vegetative stage, when the tassel is fully emerged and final leaf count is complete.',
-        image: '/assets/corn-growth/weatherstem/corn_growth5_orig.png',
-    },
-    {
-        id: 'R1',
-        label: 'Silking',
-        bbchRef: '69',
-        description: 'At R1, silks emerge and capture pollen for pollination to begin in the husk.',
-        image: '/assets/corn-growth/weatherstem/corn_growth6_orig.png',
-    },
-    {
-        id: 'R2',
-        label: 'Blister',
-        bbchRef: '74',
-        description: 'In R2 blister, kernels form and fill with fluid while silks dry and darken.',
-        image: '/assets/corn-growth/weatherstem/corn_growth7_orig.png',
-    },
-    {
-        id: 'R3',
-        label: 'Milk',
-        bbchRef: '79',
-        description: 'In R3 milk, kernels contain milky fluid as starch accumulation accelerates.',
-        image: '/assets/corn-growth/weatherstem/corn_growth8_orig.png',
-    },
-    {
-        id: 'R4',
-        label: 'Dough',
-        bbchRef: '83',
-        description: 'At R4 dough, kernels brighten and thicken as starch content increases.',
-        image: '/assets/corn-growth/weatherstem/corn_growth9_orig.png',
-    },
-    {
-        id: 'R5',
-        label: 'Dent',
-        bbchRef: '87',
-        description: 'R5 dent reflects falling moisture and harder kernel texture as maturation advances.',
-        image: '/assets/corn-growth/weatherstem/corn_growth10_orig.png',
-    },
-    {
-        id: 'R6',
-        label: 'Physiological maturity',
-        bbchRef: '89',
-        description: 'At R6, kernels have finished growth and reached physiological maturity.',
-        image: '/assets/corn-growth/weatherstem/corn_growth11_orig.png',
+        id: 'storage',
+        label: 'Storage & Closeout',
+        window: 'Post-harvest',
+        intent: 'Residue, drying/storage, shrink/loss, quality, and season attribution.',
+        stageIds: ['post_harvest'],
+        Icon: Warehouse,
     },
 ];
 
-// X-center positions (%) of each of the 15 CORN_REFERENCE_STAGES on the corn_growth_overview.png
-// The image has a non-uniform grid: Vegetative clusters are ~4.5% apart, Reproductive are 8.0% apart.
-const STAGE_IMAGE_ANCHOR_PCT = [
-    4.0, 8.5, 13.0, 17.5, 22.0, 31.5, 36.0, 40.5, 48.5,
-    56.0, 64.0, 72.0, 80.0, 88.0, 96.0
-];
+function getPhaseForField(field: { farmingStage?: string; bbchStage?: string }) {
+    const stage = field.farmingStage || 'fallow';
+    const bbch = Number.parseInt(field.bbchStage || '00', 10);
 
-function mapBbchToReferenceStage(bbch: string): number {
-    const value = Number.parseInt(bbch, 10);
-    if (Number.isNaN(value)) return 0;
+    if (stage === 'harvested') {
+        return CORN_SEASON_PHASES.findIndex((phase) => phase.id === 'finish');
+    }
+    if (stage === 'post_harvest') {
+        return CORN_SEASON_PHASES.findIndex((phase) => phase.id === 'storage');
+    }
+    if (stage !== 'growing' && stage !== 'harvest_ready') {
+        const stageMatch = CORN_SEASON_PHASES.findIndex((phase) => phase.stageIds.includes(stage));
+        return stageMatch === -1 ? 0 : stageMatch;
+    }
 
-    if (value <= 11) return 0; // VE
-    if (value <= 12) return 1; // V1
-    if (value <= 13) return 2; // V2
-    if (value <= 14) return 3; // V4
-    if (value <= 16) return 4; // V6
-    if (value <= 31) return 5; // V10
-    if (value <= 33) return 6; // V12
-    if (value <= 35) return 7; // V14
-    if (value <= 53) return 8; // VT
-    if (value <= 69) return 9; // R1
-    if (value <= 74) return 10; // R2
-    if (value <= 79) return 11; // R3
-    if (value <= 83) return 12; // R4
-    if (value <= 87) return 13; // R5
-    return 14;                  // R6
+    const bbchMatch = CORN_SEASON_PHASES.findIndex((phase) => {
+        if (phase.bbchStart === undefined || phase.bbchEnd === undefined || Number.isNaN(bbch)) return false;
+        return bbch >= phase.bbchStart && bbch <= phase.bbchEnd;
+    });
+    if (bbchMatch !== -1) return bbchMatch;
+
+    return stage === 'harvest_ready'
+        ? CORN_SEASON_PHASES.findIndex((phase) => phase.id === 'finish')
+        : CORN_SEASON_PHASES.findIndex((phase) => phase.id === 'planting');
 }
 
 export function CornGrowthTimeline() {
     const { gameFields, updateField } = useFieldStore();
-    const { cornFocusMode, gameTime, weeklyWeather, buySupplies, isAutoScoutingEnabled, toggleAutoScouting } = useGameStore();
+    const {
+        cornFocusMode, gameTime, weeklyWeather, buySupplies,
+        isAutoScoutingEnabled, toggleAutoScouting,
+        isAutoIrrigationEnabled, toggleAutoIrrigation,
+        isAutoProcurementEnabled, toggleAutoProcurement,
+        isAutoFieldOpsEnabled, toggleAutoFieldOps,
+        isAutoBookingEnabled, toggleAutoBooking
+    } = useGameStore();
     const [manualStageIndex, setManualStageIndex] = useState<number | null>(null);
     const [latestScoutingRecord, setLatestScoutingRecord] = useState<ScoutingRunRecord | null>(null);
     const [scoutingMessage, setScoutingMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -200,14 +169,14 @@ export function CornGrowthTimeline() {
         ? [...currentBbchStages].sort((a, b) => Number.parseInt(b, 10) - Number.parseInt(a, 10))[0]
         : '00';
 
-    const derivedLiveStageIndex = mapBbchToReferenceStage(mostAdvancedBbch);
+    const derivedLiveStageIndex = mapBbchToCornReferenceStage(mostAdvancedBbch);
     const liveStageIndex = derivedLiveStageIndex;
     const selectedStageIndex = manualStageIndex ?? liveStageIndex;
     const selectedStage = CORN_REFERENCE_STAGES[selectedStageIndex];
     const liveStage = CORN_REFERENCE_STAGES[liveStageIndex];
     const liveProgressPct = ((liveStageIndex + 1) / CORN_REFERENCE_STAGES.length) * 100;
     const selectedProgressPct = ((selectedStageIndex + 1) / CORN_REFERENCE_STAGES.length) * 100;
-    const selectedImageAnchor = STAGE_IMAGE_ANCHOR_PCT[selectedStageIndex] ?? STAGE_IMAGE_ANCHOR_PCT[0];
+    const selectedImageAnchor = CORN_STAGE_IMAGE_ANCHOR_PCT[selectedStageIndex] ?? CORN_STAGE_IMAGE_ANCHOR_PCT[0];
     const cornFieldIdSignature = cornFields.map((field) => field.id).sort().join('|');
     const totalCornAcres = useMemo(
         () => cornFields.reduce((sum, field) => sum + Math.max(0, field.acres || 0), 0),
@@ -224,7 +193,7 @@ export function CornGrowthTimeline() {
     );
     const cornFieldStageRows = cornFields.map((field) => {
         const bbch = field.bbchStage || '00';
-        const mappedIndex = mapBbchToReferenceStage(bbch);
+        const mappedIndex = mapBbchToCornReferenceStage(bbch);
         return {
             id: field.id,
             name: field.name,
@@ -232,6 +201,17 @@ export function CornGrowthTimeline() {
             mappedStage: CORN_REFERENCE_STAGES[mappedIndex],
         };
     });
+    const liveSeasonPhaseIndex = cornFields.length > 0
+        ? Math.max(...cornFields.map(getPhaseForField))
+        : 0;
+    const liveSeasonPhase = CORN_SEASON_PHASES[liveSeasonPhaseIndex] || CORN_SEASON_PHASES[0];
+    const phaseFieldCounts = CORN_SEASON_PHASES.map((_, idx) =>
+        cornFields.filter((field) => getPhaseForField(field) === idx).length
+    );
+    const stageDistributionLabel = phaseFieldCounts
+        .map((count, idx) => count > 0 ? `${count} ${CORN_SEASON_PHASES[idx].label}` : null)
+        .filter(Boolean)
+        .join(' / ');
 
     const getBbchIndex = (id: string) => CORN_BBCH_STAGES.findIndex((s) => s.id === id);
 
@@ -364,14 +344,14 @@ export function CornGrowthTimeline() {
     };
 
     return (
-        <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden animate-in fade-in duration-500">
-            <div className="bg-yellow-500/10 border-b border-yellow-500/20 px-4 py-3 flex flex-wrap items-start sm:items-center justify-between gap-3">
+        <div className="rounded-2xl border border-primary/20 bg-primary/5 overflow-hidden animate-in fade-in duration-500">
+            <div className="bg-primary/10 border-b border-primary/20 px-4 py-3 flex flex-wrap items-start sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                    <Leaf className="w-4 h-4 text-yellow-500" />
-                    <h3 className="text-sm font-bold text-yellow-500 uppercase tracking-wider">
+                    <Leaf className="w-4 h-4 text-primary" />
+                    <h3 className="text-sm font-bold text-primary uppercase tracking-wider">
                         Corn Growth Strategy Planner
                         {cornFields.length > 0 && (
-                            <span className="ml-2 px-1.5 py-0.5 rounded-md bg-yellow-500/20 text-[10px] normal-case font-medium">
+                            <span className="ml-2 px-1.5 py-0.5 rounded-md bg-primary/20 text-[10px] normal-case font-medium">
                                 {cornFields.length} active fields
                             </span>
                         )}
@@ -382,15 +362,15 @@ export function CornGrowthTimeline() {
                         href="https://learn.weatherstem.com/modules/learn/lessons/188/9.html"
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 transition-colors"
+                        className={strategyActionClass('neutral', 'px-3 py-1.5 text-[11px]')}
                     >
                         Reference
                         <ExternalLink className="w-3.5 h-3.5" />
                     </a>
                     <button
                         className={cn(
-                            "px-3 py-1.5 text-white rounded-lg font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5",
-                            isAutoScoutingEnabled ? "bg-primary hover:bg-primary shadow-[0_0_10px_rgba(52,211,153,0.3)] ring-1 ring-primary/50" : "bg-secondary hover:bg-secondary"
+                            strategyActionClass('neutral', 'px-3 py-1.5 text-[11px]'),
+                            isAutoScoutingEnabled && "bg-primary hover:bg-primary/90 text-primary-foreground shadow-[0_0_10px_rgba(52,211,153,0.3)] ring-1 ring-primary/50"
                         )}
                         onClick={toggleAutoScouting}
                     >
@@ -398,27 +378,128 @@ export function CornGrowthTimeline() {
                         {isAutoScoutingEnabled ? 'Auto-Scout Active' : 'Enable Auto Drone Scout'}
                     </button>
                     <button
-                        className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors"
+                        className={cn(
+                            strategyActionClass('neutral', 'px-3 py-1.5 text-[11px]'),
+                            isAutoIrrigationEnabled && "bg-primary hover:bg-primary/90 text-primary-foreground shadow-[0_0_10px_rgba(52,211,153,0.3)] ring-1 ring-primary/50"
+                        )}
+                        onClick={toggleAutoIrrigation}
+                    >
+                        <Droplets className="w-3.5 h-3.5" />
+                        {isAutoIrrigationEnabled ? 'Auto-Irrigation Active' : 'Enable Auto Irrigation'}
+                    </button>
+                    <button
+                        className={cn(
+                            strategyActionClass('neutral', 'px-3 py-1.5 text-[11px]'),
+                            isAutoProcurementEnabled && "bg-amber-500/90 hover:bg-amber-500 text-black shadow-[0_0_10px_rgba(245,158,11,0.3)] ring-1 ring-amber-500/50"
+                        )}
+                        onClick={toggleAutoProcurement}
+                    >
+                        <ShoppingCart className="w-3.5 h-3.5" />
+                        {isAutoProcurementEnabled ? 'Auto-Procure Active' : 'Enable Auto-Procure'}
+                    </button>
+                    <button
+                        className={cn(
+                            strategyActionClass('neutral', 'px-3 py-1.5 text-[11px]'),
+                            isAutoBookingEnabled && "bg-primary hover:bg-primary/90 text-primary-foreground shadow-[0_0_10px_rgba(52,211,153,0.3)] ring-1 ring-primary/50"
+                        )}
+                        onClick={toggleAutoBooking}
+                    >
+                        <Calendar className="w-3.5 h-3.5" />
+                        {isAutoBookingEnabled ? 'Auto-Booking Active' : 'Enable Auto-Booking'}
+                    </button>
+                    <button
+                        className={cn(
+                            strategyActionClass('neutral', 'px-3 py-1.5 text-[11px]'),
+                            isAutoFieldOpsEnabled && "bg-primary hover:bg-primary/90 text-primary-foreground shadow-[0_0_10px_rgba(52,211,153,0.3)] ring-1 ring-primary/50"
+                        )}
+                        onClick={toggleAutoFieldOps}
+                    >
+                        <Zap className="w-3.5 h-3.5" />
+                        {isAutoFieldOpsEnabled ? 'Auto-Ops & Fieldwork Active' : 'Enable Auto-Ops & Fieldwork'}
+                    </button>
+                    <StrategyActionButton
+                        variant="secondary"
+                        className="px-3 py-1.5 text-[11px]"
                         onClick={() => setManualStageIndex(null)}
                     >
                         Sync to live stage
-                    </button>
+                    </StrategyActionButton>
                 </div>
             </div>
 
             <div className="p-5 space-y-5">
                 {scoutingMessage && (
-                    <div
-                        className={cn(
-                            'rounded-lg border p-3 text-xs',
-                            scoutingMessage.type === 'success'
-                                ? 'border-primary/40 bg-primary/10 text-primary'
-                                : 'border-red-400/40 bg-red-500/10 text-red-100'
-                        )}
-                    >
+                    <div className={strategyNoticeClass(scoutingMessage.type, 'text-xs')}>
                         {scoutingMessage.text}
                     </div>
                 )}
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-4">
+                    <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                            <div className="text-[10px] uppercase tracking-[0.22em] text-primary/80">
+                                Season Autopilot Roadmap
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-semibold text-white">
+                                    Current focus: {liveSeasonPhase.label}
+                                </span>
+                                <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                                    {liveSeasonPhase.window}
+                                </span>
+                            </div>
+                            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted-foreground">
+                                {liveSeasonPhase.intent}
+                            </p>
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-muted-foreground">
+                            <div className="font-semibold text-foreground">{cornFields.length} corn field{cornFields.length === 1 ? '' : 's'}</div>
+                            <div>{stageDistributionLabel || 'No active corn fields yet'}</div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-7">
+                        {CORN_SEASON_PHASES.map((phase, idx) => {
+                            const done = idx < liveSeasonPhaseIndex;
+                            const active = idx === liveSeasonPhaseIndex;
+                            const count = phaseFieldCounts[idx];
+                            const PhaseIcon = phase.Icon;
+                            return (
+                                <div
+                                    key={phase.id}
+                                    className={cn(
+                                        'rounded-lg border p-3 transition-all',
+                                        active
+                                            ? 'border-primary/60 bg-primary/15 shadow-[0_0_0_1px_rgba(52,211,153,0.25)]'
+                                            : done
+                                                ? 'border-green-400/25 bg-green-500/10'
+                                                : 'border-white/10 bg-black/20'
+                                    )}
+                                >
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className={cn(
+                                            'flex h-8 w-8 items-center justify-center rounded-lg border',
+                                            active
+                                                ? 'border-primary/50 bg-primary/20 text-primary'
+                                                : done
+                                                    ? 'border-green-400/30 bg-green-500/15 text-green-300'
+                                                    : 'border-white/10 bg-white/5 text-muted-foreground'
+                                        )}>
+                                            {done ? <ClipboardCheck className="h-4 w-4" /> : <PhaseIcon className="h-4 w-4" />}
+                                        </div>
+                                        {count > 0 && (
+                                            <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                                                {count}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="mt-2 text-xs font-semibold text-white">{phase.label}</div>
+                                    <div className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{phase.window}</div>
+                                    <p className="mt-2 text-[11px] leading-snug text-muted-foreground">{phase.intent}</p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
                 <div className="rounded-xl border border-green-400/20 bg-green-500/5 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                         <span className="text-green-300 font-semibold uppercase tracking-wider">Live Corn Stage Progress</span>
@@ -646,24 +727,14 @@ export function CornGrowthTimeline() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-4">
-                    {scoutingMessage && (
-                        <div className={cn(
-                            "mb-4 rounded-lg border p-3 text-sm animate-in fade-in slide-in-from-top-2",
-                            scoutingMessage.type === 'success'
-                                ? "bg-green-500/10 border-green-500/30 text-green-300"
-                                : "bg-red-500/10 border-red-500/30 text-red-300"
-                        )}>
-                            {scoutingMessage.text}
-                        </div>
-                    )}
                     <div className="flex items-center justify-between mb-4 mt-2">
                         <div className="flex items-center gap-2">
-                            <Beaker className="w-5 h-5 text-blue-400" />
+                            <Beaker className="w-5 h-5 text-primary" />
                             <h4 className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Recommended Products</h4>
                         </div>
                         <button
                             onClick={handleBuySeasonBundle}
-                            className="bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
+                            className={strategyActionClass('warning', 'px-3 py-1.5 text-xs')}
                         >
                             <ShoppingCart className="w-3.5 h-3.5" />
                             Add Full Season Bundle

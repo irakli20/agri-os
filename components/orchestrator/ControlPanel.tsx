@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useGameStore } from '@/lib/game-store';
+import { useOrchestratorStore } from '@/lib/orchestrator';
 import { 
     Play, 
     Pause, 
@@ -13,26 +14,104 @@ import {
     BarChart3
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { AutomationLevel, OrchestratorStatus } from '@/types/orchestrator';
+import { AutomationLevel, OrchestratorStatus, SyncStatus } from '@/types/orchestrator';
+
+const ORCHESTRATOR_HEADERS = {
+    'content-type': 'application/json',
+    'x-agri-user-id': 'local-ui',
+    'x-agri-user-role': 'supervisor',
+};
 
 interface ControlPanelProps {
     className?: string;
 }
 
 export function ControlPanel({ className }: ControlPanelProps) {
-    const { gameTime } = useGameStore();
-    
-    // Orchestrator state (mock for now, would come from API in real implementation)
-    const [status, setStatus] = React.useState<OrchestratorStatus>('running');
-    const [mode, setMode] = React.useState<AutomationLevel>('assisted');
-    const [seasonProgress, setSeasonProgress] = React.useState(45);
-    const [activeOperations, setActiveOperations] = React.useState(3);
-    const [fieldsManaged, setFieldsManaged] = React.useState(8);
-    const [pendingDecisions, setPendingDecisions] = React.useState(2);
-    const [syncStatus, setSyncStatus] = React.useState<'synced' | 'syncing' | 'error'>('synced');
+    const { gameTime, transactions, activeRentals } = useGameStore();
+    const {
+        status,
+        automationLevel,
+        digitalTwin,
+        activeDecisions,
+        completedActions,
+        pendingAlerts,
+        start,
+        pause,
+        setAutomationLevel,
+    } = useOrchestratorStore();
+    const [isSubmitting, setIsSubmitting] = React.useState(false);
+    const [controlError, setControlError] = React.useState<string | null>(null);
+
+    const mode = automationLevel;
+    const seasonProgress = React.useMemo(() => {
+        const weeksPerSeason = 13;
+        const normalizedWeek = ((gameTime?.week || 1) - 1) / weeksPerSeason;
+        return Math.max(0, Math.min(100, Math.round(normalizedWeek * 100)));
+    }, [gameTime?.week]);
+
+    const activeOperations = React.useMemo(
+        () => completedActions.filter((action) => ['approved', 'dispatched', 'acknowledged'].includes(action.status)).length,
+        [completedActions]
+    );
+
+    const fieldsManaged = React.useMemo(() => {
+        const seen = new Set<string>();
+        for (const transaction of transactions) {
+            if (transaction.fieldId) {
+                seen.add(transaction.fieldId);
+            }
+        }
+        for (const rental of activeRentals) {
+            if (rental.fieldId) {
+                seen.add(rental.fieldId);
+            }
+        }
+        return seen.size;
+    }, [transactions, activeRentals]);
+    const pendingDecisions = activeDecisions.filter((decision) => decision.status === 'pending').length;
+    const syncStatus: SyncStatus = digitalTwin?.syncStatus || 'synced';
+
+    const syncFromApi = React.useCallback(async () => {
+        const response = await fetch('/api/orchestrator');
+        if (!response.ok) {
+            throw new Error(`Failed to load orchestrator state (${response.status})`);
+        }
+        // Unified store: API reads from the same store as UI.
+        // We sync only for display verification if needed, but don't force-set the store 
+        // to avoid clobbering local state or creating sync loops.
+    }, []);
+
+    React.useEffect(() => {
+        void syncFromApi().catch((error) => {
+            console.warn('[ControlPanel] Failed to sync orchestrator state from API:', error);
+        });
+    }, [syncFromApi]);
+
+    const submitControlAction = React.useCallback(async (action: 'start' | 'pause' | 'mode', mode?: AutomationLevel) => {
+        setIsSubmitting(true);
+        setControlError(null);
+        try {
+            const response = await fetch(`/api/orchestrator?action=${action}`, {
+                method: 'POST',
+                headers: ORCHESTRATOR_HEADERS,
+                body: action === 'mode'
+                    ? JSON.stringify({ mode })
+                    : JSON.stringify({}),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || payload?.success === false) {
+                throw new Error(payload?.error || `Control action failed (${response.status})`);
+            }
+            await syncFromApi();
+        } catch (error) {
+            setControlError((error as Error).message || 'Failed to update orchestrator');
+        } finally {
+            setIsSubmitting(false);
+        }
+    }, [syncFromApi]);
 
     const toggleStatus = () => {
-        setStatus(prev => prev === 'running' ? 'paused' : 'running');
+        void submitControlAction(status === 'running' ? 'pause' : 'start');
     };
 
     const getModeColor = (m: AutomationLevel) => {
@@ -82,11 +161,13 @@ export function ControlPanel({ className }: ControlPanelProps) {
                 {/* Start/Pause Button */}
                 <button
                     onClick={toggleStatus}
+                    disabled={isSubmitting}
                     className={cn(
                         "w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-semibold transition-all duration-200",
                         status === 'running' 
                             ? "bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/30" 
-                            : "bg-primary/20 hover:bg-primary/30 text-primary border border-primary/30"
+                            : "bg-primary/20 hover:bg-primary/30 text-primary border border-primary/30",
+                        isSubmitting && 'opacity-70 cursor-not-allowed'
                     )}
                 >
                     {status === 'running' ? (
@@ -103,7 +184,7 @@ export function ControlPanel({ className }: ControlPanelProps) {
                         {(['manual', 'assisted', 'fully_automated'] as AutomationLevel[]).map((m) => (
                             <button
                                 key={m}
-                                onClick={() => setMode(m)}
+                                onClick={() => void submitControlAction('mode', m)}
                                 className={cn(
                                     "px-2 py-2 rounded-lg text-xs font-medium transition-all border",
                                     mode === m 
@@ -116,6 +197,11 @@ export function ControlPanel({ className }: ControlPanelProps) {
                         ))}
                     </div>
                 </div>
+                {controlError && (
+                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                        {controlError}
+                    </div>
+                )}
             </div>
 
             {/* Season Progress */}
@@ -160,6 +246,9 @@ export function ControlPanel({ className }: ControlPanelProps) {
                     <p className={cn("text-2xl font-bold", pendingDecisions > 0 ? "text-amber-400" : "text-white")}>
                         {pendingDecisions}
                     </p>
+                    {pendingAlerts.length > 0 && (
+                        <p className="text-[11px] text-muted-foreground mt-1">Alerts: {pendingAlerts.length}</p>
+                    )}
                 </div>
                 <div className="bg-white/5 rounded-lg p-3">
                     <div className="flex items-center gap-2 text-muted-foreground mb-1">
@@ -177,11 +266,13 @@ export function ControlPanel({ className }: ControlPanelProps) {
 
             {/* Footer Info */}
             <div className="mt-auto pt-4 border-t border-white/10">
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Last Update: 2 min ago</span>
+                <div className="flex items-center justify-between text-xs text-muted-foreground gap-3">
+                    <span>
+                        Last Update: {digitalTwin?.lastSync ? new Date(digitalTwin.lastSync).toLocaleTimeString() : 'Unavailable'}
+                    </span>
                     <button className="flex items-center gap-1 hover:text-white transition-colors">
                         <Settings className="w-3 h-3" />
-                        Settings
+                        {pendingAlerts.length > 0 ? `${pendingAlerts.length} Alerts` : 'Settings'}
                     </button>
                 </div>
             </div>

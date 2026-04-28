@@ -43,6 +43,7 @@ import { useGameStore } from '@/lib/game-store';
 import { useFieldStore } from '@/lib/field-store';
 import { StrategyGuideArrow } from '@/components/game/StrategyGuideArrow';
 import { GuideOrchestrator } from '@/components/game/GuideOrchestrator';
+import { strategyActionClass } from '@/components/game/strategy-ui';
 import { WEATHER } from '@/lib/mock-data';
 
 interface AppShellProps {
@@ -66,7 +67,7 @@ export function AppShell({ children }: AppShellProps) {
         weeklyChallenges,
         resetSeason,
     } = useGameStore();
-    const { syncGameFields, getActiveFields } = useFieldStore();
+    const { syncGameFields, getFieldsForMode } = useFieldStore();
 
     // Ensure we have the latest player state
     const player = getCurrentPlayer();
@@ -127,7 +128,7 @@ export function AppShell({ children }: AppShellProps) {
         { key: 'business', label: 'Business', icon: ShieldCheck },
     ];
     const openWeeklyChallenges = weeklyChallenges.filter((challenge) => challenge.status === 'open').length;
-    const activeFields = getActiveFields(gameMode);
+    const activeFields = getFieldsForMode(gameMode ? 'strategy' : 'demo');
     const criticalFieldCount = activeFields.filter((field) => field.healthStatus === 'critical').length;
     const sprayReady = WEATHER.current.windSpeed < 10 && WEATHER.current.precipitation === 0;
 
@@ -353,19 +354,20 @@ export function AppShell({ children }: AppShellProps) {
                                     <button
                                         onClick={openWeeklyPlanner}
                                         data-guide-id="game-cta-open-weekly-plan"
-                                        className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-xs font-semibold text-foreground border border-white/10"
+                                        className={strategyActionClass('neutral', 'text-xs')}
                                     >
                                         Weekly Plan
                                         {openWeeklyChallenges > 0 && (
-                                            <span className="ml-1 rounded bg-orange-500/30 px-1 py-0.5 text-[10px] text-orange-200">
+                                            <span className="ml-1 rounded bg-amber-500/30 px-1 py-0.5 text-[10px] text-amber-200">
                                                 {openWeeklyChallenges}
                                             </span>
                                         )}
                                     </button>
                                     <button
-                                        onClick={advanceTime}
+                                        onClick={() => advanceTime()}
                                         data-guide-id="game-cta-next-week"
-                                        className="px-3 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold"
+                                        title="Advance one full week and process planned operations"
+                                        className={strategyActionClass('primary', 'text-xs')}
                                     >
                                         Next Week
                                     </button>
@@ -431,15 +433,23 @@ export function AppShell({ children }: AppShellProps) {
 
                 {/* Content */}
                 <div className="flex-1 relative overflow-hidden px-2 md:px-6 page-enter">
-                    {children}
+                    {isWeeklyPlannerOpen ? (
+                        <div className="h-full min-h-[50vh] bg-background" aria-hidden="true" />
+                    ) : (
+                        children
+                    )}
                 </div>
             </main>
             <WeeklyPlanningModal
                 isOpen={isWeeklyPlannerOpen}
                 onClose={closeWeeklyPlanner}
             />
-            <GuideOrchestrator />
-            <StrategyGuideArrow />
+            {!isWeeklyPlannerOpen && (
+                <>
+                    <GuideOrchestrator />
+                    <StrategyGuideArrow />
+                </>
+            )}
         </div>
     );
 }

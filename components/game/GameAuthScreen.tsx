@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useGameStore, STARTING_BALANCE } from '@/lib/game-store';
-import { Sprout, Mail, Lock, User, ArrowRight, Gamepad2, DollarSign } from 'lucide-react';
+import { Mail, Lock, User, ArrowRight, Gamepad2, DollarSign } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function GameAuthScreen() {
@@ -14,10 +14,15 @@ export function GameAuthScreen() {
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
 
-    const { signup, login, rentField, players, currentPlayerId } = useGameStore();
+    const { signup, login, players, currentPlayerId } = useGameStore();
+
+    const hasAutoLoggedIn = useRef(false);
 
     // Auto-login bypass
     React.useEffect(() => {
+        if (hasAutoLoggedIn.current) return;
+        hasAutoLoggedIn.current = true;
+
         const autoLogin = async () => {
             setIsLoading(true);
             await new Promise(r => setTimeout(r, 800)); // Visual buffer
@@ -27,17 +32,10 @@ export function GameAuthScreen() {
             // Login
             login('guest@agrios.dev', 'guest123');
 
-            // Give starter field if none owned/rented
-            const currentPlayer = players.find(p => p.email === 'guest@agrios.dev');
-            if (currentPlayer && currentPlayer.ownedFieldIds.length === 0 && currentPlayer.rentedFieldIds.length === 0) {
-                // Rent San Joaquin Farm (mkt-6) as it's corn suitable
-                rentField('mkt-6', 4500);
-            }
-
             setIsLoading(false);
         };
         autoLogin();
-    }, [signup, login, rentField, players]);
+    }, [signup, login]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

@@ -79,7 +79,7 @@ export function StrategyGuideArrow() {
     return (
         <div className="fixed inset-0 pointer-events-none z-[120]">
             <div
-                className="absolute rounded-xl border-2 border-yellow-300/85 shadow-[0_0_0_2px_rgba(253,224,71,0.25),0_0_22px_rgba(253,224,71,0.35)] animate-pulse"
+                className="absolute rounded-xl border-2 border-primary/85 shadow-[0_0_0_2px_rgba(52,211,153,0.25),0_0_22px_rgba(52,211,153,0.35)] animate-pulse"
                 style={{
                     left: `${targetRect!.left - outlinePadding}px`,
                     top: `${targetRect!.top - outlinePadding}px`,

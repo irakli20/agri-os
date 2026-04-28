@@ -13,6 +13,9 @@ interface FieldStore {
     deleteField: (id: string) => void;
     syncGameFields: (ownedFieldIds: string[], rentedFieldIds: string[]) => void;
     getActiveFields: (isGameMode: boolean) => Field[];
+    getDemoFields: () => Field[];
+    getStrategyFields: () => Field[];
+    getFieldsForMode: (mode: 'demo' | 'strategy') => Field[];
 }
 
 /**
@@ -64,10 +67,19 @@ export const useFieldStore = create<FieldStore>()(
                 const state = get();
                 return isGameMode ? state.gameFields : state.fields;
             },
+            getDemoFields: () => get().fields,
+            getStrategyFields: () => get().gameFields,
+            getFieldsForMode: (mode) => mode === 'strategy' ? get().gameFields : get().fields,
         }),
         {
             name: 'agri-os-field-storage',
-            storage: createJSONStorage(() => localStorage),
+            storage: createJSONStorage(() =>
+                typeof window !== 'undefined' ? localStorage : {
+                    getItem: () => null,
+                    setItem: () => undefined,
+                    removeItem: () => undefined,
+                }
+            ),
         }
     )
 );

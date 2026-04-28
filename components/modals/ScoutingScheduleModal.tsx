@@ -51,8 +51,9 @@ export function ScoutingScheduleModal({
     fieldName,
     onSchedule
 }: ScoutingScheduleModalProps) {
-    const { fields, gameFields } = useFieldStore();
+    const { getFieldsForMode } = useFieldStore();
     const { gameMode, gameTime } = useGameStore();
+    const activeFields = getFieldsForMode(gameMode ? 'strategy' : 'demo');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [scout, setScout] = useState('');
     const [priority, setPriority] = useState('medium');
@@ -77,7 +78,6 @@ export function ScoutingScheduleModal({
             notes
         });
 
-        const activeFields = gameMode ? gameFields : fields;
         const targetField = activeFields.find((item) => item.id === fieldId);
         const plannedParams = buildPlannedAerialParams({
             acres: targetField?.acres || 40,
@@ -268,8 +268,8 @@ export function ScoutingScheduleModal({
                         </button>
                         <button
                             onClick={handleSubmit}
-                            disabled={!scout || !date}
-                            className="btn-modal-primary"
+                            disabled={!scout || !date || !fieldId || !fieldName}
+                            className="btn-modal-primary disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             Schedule Mission
                         </button>

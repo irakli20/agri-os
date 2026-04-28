@@ -4,69 +4,17 @@ import { authorizeOrchestratorRequest } from '@/lib/orchestrator/rbac';
 import { evaluateOrchestratorGuardrails } from '@/lib/orchestrator/policy-guardrails';
 import { createIncident, getIncidentSummary } from '@/lib/orchestrator/incidents';
 import { recordAuditEvent } from '@/lib/orchestrator/audit';
-
-// In-memory store for demo (would use database in production)
-let orchestratorState: OrchestratorState = {
-    id: 'orch-001',
-    status: 'running',
-    automationLevel: 'assisted',
-    simulationMode: 'real_time',
-    currentTick: 0,
-    lastTickTime: new Date(),
-    season: 'Spring',
-    week: 1,
-    year: 1,
-    activeDecisions: [],
-    completedActions: [],
-    pendingAlerts: [],
-    performanceMetrics: {
-        totalDecisions: 0,
-        approvedDecisions: 0,
-        declinedDecisions: 0,
-        autoExecutedDecisions: 0,
-        averageConfidence: 0,
-        averageROI: 0,
-        predictionAccuracy: 0,
-        systemUptime: 99.9,
-        lastUpdated: new Date(),
-        trends: [],
-    },
-    digitalTwin: {
-        lastSync: new Date(),
-        syncStatus: 'synced',
-        virtualFields: [],
-        driftReports: [],
-        calibrationStatus: {
-            lastCalibration: new Date(),
-            nextCalibration: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-            parametersCalibrated: ['soil_moisture', 'growth_rate', 'yield_prediction'],
-            accuracy: 94,
-            modelVersion: 'v2.4.1',
-        },
-        predictions: [],
-    },
-    sensorStatus: {
-        totalSensors: 24,
-        onlineSensors: 24,
-        offlineSensors: 0,
-        lowBatterySensors: 0,
-        calibrationDueSensors: 2,
-        lastSync: new Date(),
-        syncLatency: 150,
-    },
-    safety: {
-        emergencyStopActive: false,
-    },
-};
+import { useOrchestratorStore } from '@/lib/orchestrator';
 
 /**
  * GET /api/orchestrator
  * Get orchestrator status
  */
 export async function GET(): Promise<NextResponse> {
+    const orchestrator = useOrchestratorStore.getState();
     const response: OrchestratorAPIResponse<OrchestratorState> = {
         success: true,
-        data: orchestratorState,
+        data: orchestrator as any, // Cast to any to handle type overlap
         timestamp: new Date(),
     };
 
@@ -79,10 +27,11 @@ export async function GET(): Promise<NextResponse> {
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
     try {
+        const orchestrator = useOrchestratorStore.getState();
         const authz = authorizeOrchestratorRequest(request, 'orchestrator.control', {
             action: 'change orchestrator runtime state',
             entityType: 'system',
-            entityId: orchestratorState.id,
+            entityId: orchestrator.id,
         });
         if (!authz.ok) {
             return authz.response;
@@ -102,7 +51,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
                 eventType: 'policy_guardrail_blocked',
                 severity: 'critical',
                 entityType: 'policy',
-                entityId: orchestratorState.id,
+                entityId: orchestrator.id,
                 actor: { id: authz.actor.id, type: 'api' },
                 message: `Orchestrator control blocked for action=${action}`,
                 metadata: { guardrail, action, targetMode },
@@ -113,7 +62,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
                 severity: 'high',
                 source: 'policy',
                 relatedEntityType: 'system',
-                relatedEntityId: orchestratorState.id,
+                relatedEntityId: orchestrator.id,
                 recommendedActions: guardrail.hits.map((hit) => hit.remediation),
                 metadata: { guardrail, action, targetMode },
                 actorId: authz.actor.id,
@@ -129,7 +78,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
                 eventType: 'policy_guardrail_warning',
                 severity: 'warning',
                 entityType: 'policy',
-                entityId: orchestratorState.id,
+                entityId: orchestrator.id,
                 actor: { id: authz.actor.id, type: 'api' },
                 message: `Orchestrator control warning for action=${action}`,
                 metadata: { guardrail, action, targetMode },
@@ -137,8 +86,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }
 
         if (action === 'start') {
-            orchestratorState.status = 'running';
-            orchestratorState.lastTickTime = new Date();
+            orchestrator.start();
             
             return NextResponse.json({
                 success: true,
@@ -148,7 +96,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }
 
         if (action === 'pause') {
-            orchestratorState.status = 'paused';
+            orchestrator.pause();
             
             return NextResponse.json({
                 success: true,
@@ -175,7 +123,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
                         eventType: 'policy_guardrail_blocked',
                         severity: 'critical',
                         entityType: 'policy',
-                        entityId: orchestratorState.id,
+                        entityId: orchestrator.id,
                         actor: { id: authz.actor.id, type: 'api' },
                         message: 'Fully automated mode blocked by open critical incidents.',
                         metadata: {
@@ -191,7 +139,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
                 }
             }
 
-            orchestratorState.automationLevel = mode;
+            orchestrator.setAutomationLevel(mode);
 
             return NextResponse.json({
                 success: true,

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Widget } from '@/components/dashboard/DashboardGrid';
 import {
     Calendar,
@@ -15,61 +15,112 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { ReportGeneratorModal } from '@/components/modals/ReportGeneratorModal';
+import { useGameStore } from '@/lib/game-store';
 
 export function QuickActionsCard() {
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+    const { gameMode } = useGameStore();
 
-    const actions = [
-        {
-            label: 'Book Service',
-            description: 'Schedule external support',
-            icon: Calendar,
-            href: '/services',
-            color: 'text-blue-400 bg-blue-500/10 hover:bg-blue-500/20',
-        },
-        {
-            label: 'Order Supplies',
-            description: 'Procure seeds and inputs',
-            icon: ShoppingCart,
-            href: '/procurement',
-            color: 'text-green-400 bg-green-500/10 hover:bg-green-500/20',
-        },
-        {
-            label: 'Maintenance',
-            description: 'Prevent equipment downtime',
-            icon: Wrench,
-            href: '/equipment',
-            color: 'text-orange-400 bg-orange-500/10 hover:bg-orange-500/20',
-        },
-        {
-            label: 'Manage Cards',
-            description: 'Control payment methods',
-            icon: CreditCard,
-            href: '/finance',
-            color: 'text-purple-400 bg-purple-500/10 hover:bg-purple-500/20',
-        },
-        {
-            label: 'Messages',
-            description: 'Check provider updates',
-            icon: MessageCircle,
-            href: '/bookings',
-            color: 'text-pink-400 bg-pink-500/10 hover:bg-pink-500/20',
-        },
-        {
-            label: 'Inventory',
-            description: 'Track stock on hand',
-            icon: Package,
-            href: '/inventory',
-            color: 'text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20',
-        },
-        {
-            label: 'Generate Report',
-            description: 'Export operation summary',
-            icon: FileText,
-            onClick: () => setIsReportModalOpen(true),
-            color: 'text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20',
-        },
-    ];
+    const actions = useMemo(() => {
+        if (gameMode) {
+            return [
+                {
+                    label: 'Buy Supplies',
+                    description: 'Seeds, fertilizer, and crop inputs',
+                    icon: ShoppingCart,
+                    href: '/game/marketplace/supplies',
+                    color: 'text-green-400 bg-green-500/10 hover:bg-green-500/20',
+                },
+                {
+                    label: 'Book Services',
+                    description: 'Irrigation, spraying, and field support',
+                    icon: Calendar,
+                    href: '/game/marketplace/services',
+                    color: 'text-blue-400 bg-blue-500/10 hover:bg-blue-500/20',
+                },
+                {
+                    label: 'Browse Land',
+                    description: 'Rent or buy your next field',
+                    icon: Package,
+                    href: '/game/marketplace',
+                    color: 'text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20',
+                },
+                {
+                    label: 'Review Finances',
+                    description: 'Track balance and season spending',
+                    icon: CreditCard,
+                    href: '/finance',
+                    color: 'text-purple-400 bg-purple-500/10 hover:bg-purple-500/20',
+                },
+                {
+                    label: 'View Runbooks',
+                    description: 'Follow guided seasonal operations',
+                    icon: Wrench,
+                    href: '/runbooks',
+                    color: 'text-orange-400 bg-orange-500/10 hover:bg-orange-500/20',
+                },
+                {
+                    label: 'Generate Season Report',
+                    description: 'Export strategy progress snapshot',
+                    icon: FileText,
+                    onClick: () => setIsReportModalOpen(true),
+                    color: 'text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20',
+                },
+            ];
+        }
+
+        return [
+            {
+                label: 'Book Service',
+                description: 'Schedule external support',
+                icon: Calendar,
+                href: '/services',
+                color: 'text-blue-400 bg-blue-500/10 hover:bg-blue-500/20',
+            },
+            {
+                label: 'Order Supplies',
+                description: 'Procure seeds and inputs',
+                icon: ShoppingCart,
+                href: '/procurement',
+                color: 'text-green-400 bg-green-500/10 hover:bg-green-500/20',
+            },
+            {
+                label: 'Maintenance',
+                description: 'Prevent equipment downtime',
+                icon: Wrench,
+                href: '/equipment',
+                color: 'text-orange-400 bg-orange-500/10 hover:bg-orange-500/20',
+            },
+            {
+                label: 'Manage Cards',
+                description: 'Control payment methods',
+                icon: CreditCard,
+                href: '/finance',
+                color: 'text-purple-400 bg-purple-500/10 hover:bg-purple-500/20',
+            },
+            {
+                label: 'Messages',
+                description: 'Check provider updates',
+                icon: MessageCircle,
+                href: '/bookings',
+                color: 'text-pink-400 bg-pink-500/10 hover:bg-pink-500/20',
+            },
+            {
+                label: 'Inventory',
+                description: 'Track stock on hand',
+                icon: Package,
+                href: '/inventory',
+                color: 'text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20',
+            },
+            {
+                label: 'Generate Report',
+                description: 'Export operation summary',
+                icon: FileText,
+                onClick: () => setIsReportModalOpen(true),
+                color: 'text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20',
+            },
+        ];
+    }, [gameMode]);
 
     return (
         <Widget

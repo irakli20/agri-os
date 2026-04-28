@@ -357,33 +357,25 @@ export function advanceFieldGrowth(field: Field, cornFocusMode?: boolean, season
             return fixedField;
         }
 
-        // Growth Calibration Logic: 
-        // 60% base chance, but reduces in Autumn to simulate cooling weather
-        let advanceChance = 0.6;
-        if (season === 'Autumn') {
-            advanceChance = 0.45; // Slow down maturity in late season
-        }
+        // Corn Expert uses a deterministic weekly BBCH progression so the
+        // roadmap, scouting visual, and autopilot sequence stay synchronized.
+        const next = CORN_BBCH_STAGES[currentIndex + 1];
 
-        if (Math.random() < advanceChance) {
-            const next = CORN_BBCH_STAGES[currentIndex + 1];
+        // NDVI Simulation for Corn
+        let newNdvi = field.ndviScore || 0;
+        const progress = currentIndex / CORN_BBCH_STAGES.length;
 
-            // NDVI Simulation for Corn
-            let newNdvi = field.ndviScore || 0;
-            const progress = currentIndex / CORN_BBCH_STAGES.length;
+        if (currentIndex < 6) newNdvi = 0.1 + (progress * 0.4);       // Early veg
+        else if (currentIndex < 11) newNdvi = 0.5 + (progress * 0.45); // Rapid growth
+        else newNdvi = 0.85 - (progress * 0.3);                        // Senescence
 
-            if (currentIndex < 6) newNdvi = 0.1 + (progress * 0.4);       // Early veg
-            else if (currentIndex < 11) newNdvi = 0.5 + (progress * 0.45); // Rapid growth
-            else newNdvi = 0.85 - (progress * 0.3);                        // Senescence
-
-            return {
-                ...fixedField,
-                bbchStage: next.id,
-                cropStage: next.stage as any,
-                ndviScore: Math.round(newNdvi * 100) / 100,
-                farmingStage: next.id === '89' ? 'harvest_ready' : fixedField.farmingStage
-            };
-        }
-        return fixedField;
+        return {
+            ...fixedField,
+            bbchStage: next.id,
+            cropStage: next.stage as any,
+            ndviScore: Math.round(newNdvi * 100) / 100,
+            farmingStage: next.id === '89' ? 'harvest_ready' : fixedField.farmingStage
+        };
     }
 
     // Standard Crop lifecycle sequence

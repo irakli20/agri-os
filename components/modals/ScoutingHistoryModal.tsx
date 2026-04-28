@@ -17,7 +17,8 @@ import {
     Clock
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { FIELDS } from '@/lib/mock-data';
+import { useFieldStore } from '@/lib/field-store';
+import { useGameStore } from '@/lib/game-store';
 import {
     ScoutingObservation,
     ObservationType,
@@ -36,6 +37,9 @@ interface ScoutingHistoryModalProps {
 }
 
 export function ScoutingHistoryModal({ isOpen, onClose, fieldId }: ScoutingHistoryModalProps) {
+    const { getFieldsForMode } = useFieldStore();
+    const { gameMode } = useGameStore();
+    const activeFields = getFieldsForMode(gameMode ? 'strategy' : 'demo');
     const [selectedType, setSelectedType] = useState<ObservationType | 'all'>('all');
     const [selectedSeverity, setSelectedSeverity] = useState<SeverityLevel | 'all'>('all');
     const [dateRange, setDateRange] = useState<'all' | '7days' | '30days' | '90days'>('all');
@@ -108,7 +112,7 @@ export function ScoutingHistoryModal({ isOpen, onClose, fieldId }: ScoutingHisto
     };
 
     const getFieldName = (fieldId: string) => {
-        const field = FIELDS.find(f => f.id === fieldId);
+        const field = activeFields.find(f => f.id === fieldId);
         return field?.name || 'Unknown Field';
     };
 

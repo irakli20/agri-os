@@ -25,8 +25,8 @@ import { WEATHER } from '@/lib/mock-data';
  */
 export default function Home() {
     const { gameMode, weeklyChallenges } = useGameStore();
-    const { getActiveFields } = useFieldStore();
-    const fields = getActiveFields(gameMode);
+    const { getFieldsForMode } = useFieldStore();
+    const fields = getFieldsForMode(gameMode ? 'strategy' : 'demo');
     const openChallenges = weeklyChallenges.filter((challenge) => challenge.status === 'open').length;
     const criticalFields = fields.filter((field) => field.healthStatus === 'critical').length;
     const totalAcres = fields.reduce((sum, field) => sum + field.acres, 0);
@@ -49,16 +49,22 @@ export default function Home() {
                                         <MapPinned className="h-3.5 w-3.5" />
                                         Mission Overview
                                     </div>
-                                    <h2 className="mt-2 text-xl font-semibold text-foreground">Plan, monitor, and act from one operational surface</h2>
-                                    <p className="mt-1 text-sm text-muted-foreground">Prioritize field health, weather windows, and pending work before dispatch.</p>
+                                    <h2 className="mt-2 text-xl font-semibold text-foreground">
+                                        {gameMode ? 'Run the season one week at a time' : 'Plan, monitor, and act from one operational surface'}
+                                    </h2>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        {gameMode
+                                            ? 'Strategy mode is active: focus on weekly priorities, weather windows, and field progression.'
+                                            : 'Operations mode: monitor field health, weather windows, and pending work before dispatch.'}
+                                    </p>
                                 </div>
                                 <div className="flex gap-2">
-                                    <Link href="/fields" className="cta-primary inline-flex items-center gap-2 text-sm">
-                                        View Fields
+                                    <Link href={gameMode ? '/game/my-fields' : '/fields'} className="cta-primary inline-flex items-center gap-2 text-sm">
+                                        {gameMode ? 'Open Strategy Fields' : 'View Fields'}
                                         <ArrowRight className="h-4 w-4" />
                                     </Link>
-                                    <Link href="/services" className="cta-secondary inline-flex items-center gap-2 text-sm">
-                                        Book Service
+                                    <Link href={gameMode ? '/game/marketplace/services' : '/services'} className="cta-secondary inline-flex items-center gap-2 text-sm">
+                                        {gameMode ? 'Open Service Market' : 'Book Service'}
                                     </Link>
                                 </div>
                             </div>
@@ -76,7 +82,9 @@ export default function Home() {
                                 <div className="rounded-lg border border-white/10 bg-black/20 p-3">
                                     <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Weather Risk</p>
                                     <p className="mt-1 text-lg font-semibold">{WEATHER.current.precipitation}%</p>
-                                    <p className="text-xs text-muted-foreground">Current precipitation chance</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {gameMode ? 'Current weather pressure for this week' : 'Current precipitation chance'}
+                                    </p>
                                 </div>
                                 <div className="rounded-lg border border-white/10 bg-black/20 p-3">
                                     <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Open Priorities</p>
@@ -95,18 +103,18 @@ export default function Home() {
                             <>
                                 <StrategyCoachCard />
                                 <InventorySummaryCard />
-                                <FleetStatusCard />
+                                <QuickActionsCard />
                             </>
                         ) : (
                             <>
                                 <FleetStatusCard />
                                 <RecentFlightsCard />
+                                <QuickActionsCard />
+                                <div className="h-full min-h-[300px]">
+                                    <ActivityLogPanel activities={MOCK_ACTIVITIES} />
+                                </div>
                             </>
                         )}
-                        <QuickActionsCard />
-                        <div className="h-full min-h-[300px]">
-                            <ActivityLogPanel activities={MOCK_ACTIVITIES} />
-                        </div>
                     </DashboardGrid>
                 </div>
             </div>

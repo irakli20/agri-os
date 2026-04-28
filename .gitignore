@@ -8,9 +8,11 @@ coverage/
 
 # Next.js
 .next/
+.next_stale*
 out/
 build/
 dist/
+.npm-cache/
 
 # Production
 *.log
@@ -53,3 +55,7 @@ Thumbs.db
 *.shp
 *.shx
 *.dbf
+.agri-os-nested-backup/
+.next_stale_*/
+
+.next.bak*

@@ -13,7 +13,11 @@ export function RecentFlightsCard() {
     const getFieldName = (fieldId: string) => fields.find(f => f.id === fieldId)?.name || 'Unknown';
     const getDroneName = (droneId: string) => DRONES.find(d => d.id === droneId)?.model || 'Unknown';
 
+    const [mounted, setMounted] = React.useState(false);
+    React.useEffect(() => setMounted(true), []);
+
     const formatDate = (dateString: string) => {
+        if (!mounted) return '';
         const date = new Date(dateString);
         const now = new Date();
         const diffHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));

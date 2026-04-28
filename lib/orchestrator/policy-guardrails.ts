@@ -136,7 +136,7 @@ export function evaluateOrchestratorGuardrails(input: EvaluateGuardrailsInput): 
         makeHit(
           'SPRAY_WINDOW_UNSAFE',
           'critical',
-          'Treatment dispatch blocked due unsafe spray window conditions.',
+          'Treatment dispatch blocked due to unsafe spray window conditions.',
           'Wait for spray-open window with lower wind/rain risk or switch to manual contingency plan.',
           {
             windMph,
@@ -181,7 +181,7 @@ export function evaluateOrchestratorGuardrails(input: EvaluateGuardrailsInput): 
       makeHit(
         'FIELDWORK_WINDOW_CLOSED',
         'critical',
-        'Fieldwork-dependent action blocked due current weather gate.',
+        'Fieldwork-dependent action blocked due to current weather gate.',
         'Delay execution until fieldwork window opens or use service fallback where applicable.',
         { fieldworkOpen: weather?.fieldworkOpen }
       )

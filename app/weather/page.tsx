@@ -30,12 +30,12 @@ export default function WeatherPage() {
     const hourlyForecast = useMemo(() => generateHourlyForecast(), []);
     const sprayWindows = useMemo(() => getSprayWindows(hourlyForecast), [hourlyForecast]);
 
-    const getSprayScoreColor = (score: number) => {
-        if (score >= 90) return 'text-green-400 bg-green-500/20';
-        if (score >= 70) return 'text-blue-400 bg-blue-500/20';
-        if (score >= 50) return 'text-yellow-400 bg-yellow-500/20';
-        if (score >= 30) return 'text-orange-400 bg-orange-500/20';
-        return 'text-red-400 bg-red-500/20';
+    const getSprayScoreColor = (score: number, type: 'text' | 'bg' = 'text'): string => {
+        if (score >= 90) return type === 'text' ? 'text-green-400 bg-green-500/20' : 'bg-green-500';
+        if (score >= 70) return type === 'text' ? 'text-blue-400 bg-blue-500/20' : 'bg-blue-500';
+        if (score >= 50) return type === 'text' ? 'text-yellow-400 bg-yellow-500/20' : 'bg-yellow-500';
+        if (score >= 30) return type === 'text' ? 'text-orange-400 bg-orange-500/20' : 'bg-orange-500';
+        return type === 'text' ? 'text-red-400 bg-red-500/20' : 'bg-red-500';
     };
 
     const getSprayScoreLabel = (score: number) => {
@@ -198,7 +198,7 @@ export default function WeatherPage() {
                                                 <div
                                                     className={cn(
                                                         "h-full rounded-full",
-                                                        getSprayScoreColor(hour.sprayScore || 0).replace('text-', 'bg-').replace('-400', '-500')
+                                                        getSprayScoreColor(hour.sprayScore || 0, 'bg')
                                                     )}
                                                     style={{ width: `${hour.sprayScore || 0}%` }}
                                                 />
@@ -228,7 +228,12 @@ export default function WeatherPage() {
                                 <div className="flex items-center gap-2">
                                     <div className="w-24 h-2 bg-white/10 rounded-full overflow-hidden">
                                         <div
-                                            className="h-full bg-gradient-to-r from-green-500 to-yellow-500"
+                                            className={cn(
+                                                "h-full transition-colors",
+                                                DROUGHT_PREDICTION.weekAhead >= 70 ? "bg-red-500" :
+                                                DROUGHT_PREDICTION.weekAhead >= 40 ? "bg-orange-500" :
+                                                DROUGHT_PREDICTION.weekAhead >= 20 ? "bg-yellow-500" : "bg-green-500"
+                                            )}
                                             style={{ width: `${DROUGHT_PREDICTION.weekAhead}%` }}
                                         />
                                     </div>
@@ -240,7 +245,12 @@ export default function WeatherPage() {
                                 <div className="flex items-center gap-2">
                                     <div className="w-24 h-2 bg-white/10 rounded-full overflow-hidden">
                                         <div
-                                            className="h-full bg-gradient-to-r from-yellow-500 to-orange-500"
+                                            className={cn(
+                                                "h-full transition-colors",
+                                                DROUGHT_PREDICTION.monthAhead >= 70 ? "bg-red-500" :
+                                                DROUGHT_PREDICTION.monthAhead >= 40 ? "bg-orange-500" :
+                                                DROUGHT_PREDICTION.monthAhead >= 20 ? "bg-yellow-500" : "bg-green-500"
+                                            )}
                                             style={{ width: `${DROUGHT_PREDICTION.monthAhead}%` }}
                                         />
                                     </div>
@@ -252,7 +262,12 @@ export default function WeatherPage() {
                                 <div className="flex items-center gap-2">
                                     <div className="w-24 h-2 bg-white/10 rounded-full overflow-hidden">
                                         <div
-                                            className="h-full bg-gradient-to-r from-orange-500 to-red-500"
+                                            className={cn(
+                                                "h-full transition-colors",
+                                                DROUGHT_PREDICTION.seasonAhead >= 70 ? "bg-red-500" :
+                                                DROUGHT_PREDICTION.seasonAhead >= 40 ? "bg-orange-500" :
+                                                DROUGHT_PREDICTION.seasonAhead >= 20 ? "bg-yellow-500" : "bg-green-500"
+                                            )}
                                             style={{ width: `${DROUGHT_PREDICTION.seasonAhead}%` }}
                                         />
                                     </div>

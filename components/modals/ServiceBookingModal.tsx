@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { X, Calendar, Clock, MapPin, CreditCard, CheckCircle, Star, Truck, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { type Service } from '@/lib/service-data';
+import { useFieldStore } from '@/lib/field-store';
+import { useGameStore } from '@/lib/game-store';
 
 interface ServiceBookingModalProps {
     service: Service;
@@ -12,6 +14,9 @@ interface ServiceBookingModalProps {
 }
 
 export function ServiceBookingModal({ service, isOpen, onClose }: ServiceBookingModalProps) {
+    const { getFieldsForMode } = useFieldStore();
+    const { gameMode } = useGameStore();
+    const activeFields = getFieldsForMode(gameMode ? 'strategy' : 'demo');
     const [step, setStep] = useState(1);
     const [selectedDate, setSelectedDate] = useState('');
     const [selectedTime, setSelectedTime] = useState('');
@@ -19,8 +24,6 @@ export function ServiceBookingModal({ service, isOpen, onClose }: ServiceBooking
     const [acres, setAcres] = useState(50);
     const [notes, setNotes] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
-
-    if (!isOpen) return null;
 
     const totalCost = service.pricing.type === 'per_acre'
         ? service.pricing.amount * acres
@@ -39,12 +42,13 @@ export function ServiceBookingModal({ service, isOpen, onClose }: ServiceBooking
         '02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM', '06:00 PM'
     ];
 
-    const mockFields = [
-        { id: 'north-40', name: 'North 40', acres: 42 },
-        { id: 'south-vineyard', name: 'South Vineyard', acres: 28 },
-        { id: 'east-orchard', name: 'East Orchard', acres: 35 },
-        { id: 'west-pasture', name: 'West Pasture', acres: 55 },
-    ];
+    const bookableFields = useMemo(() => activeFields.map((field) => ({
+        id: field.id,
+        name: field.name,
+        acres: field.acres,
+    })), [activeFields]);
+
+    if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -120,26 +124,32 @@ export function ServiceBookingModal({ service, isOpen, onClose }: ServiceBooking
                             {/* Field Selection */}
                             <div>
                                 <label className="block text-sm font-medium mb-2">Select Field</label>
-                                <div className="grid grid-cols-2 gap-3">
-                                    {mockFields.map(field => (
-                                        <button
-                                            key={field.id}
-                                            onClick={() => {
-                                                setSelectedField(field.id);
-                                                setAcres(field.acres);
-                                            }}
-                                            className={cn(
-                                                "p-4 rounded-xl border text-left transition-all",
-                                                selectedField === field.id
-                                                    ? "border-primary bg-primary/10"
-                                                    : "border-white/10 bg-white/5 hover:bg-white/10"
-                                            )}
-                                        >
-                                            <div className="font-medium">{field.name}</div>
-                                            <div className="text-sm text-muted-foreground">{field.acres} acres</div>
-                                        </button>
-                                    ))}
-                                </div>
+                                {bookableFields.length === 0 ? (
+                                    <div className="rounded-xl border border-dashed border-white/15 bg-white/5 p-4 text-sm text-muted-foreground">
+                                        No fields available in the current mode. Add or acquire a field before booking a service.
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {bookableFields.map(field => (
+                                            <button
+                                                key={field.id}
+                                                onClick={() => {
+                                                    setSelectedField(field.id);
+                                                    setAcres(field.acres);
+                                                }}
+                                                className={cn(
+                                                    "p-4 rounded-xl border text-left transition-all",
+                                                    selectedField === field.id
+                                                        ? "border-primary bg-primary/10"
+                                                        : "border-white/10 bg-white/5 hover:bg-white/10"
+                                                )}
+                                            >
+                                                <div className="font-medium">{field.name}</div>
+                                                <div className="text-sm text-muted-foreground">{field.acres} acres</div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
 
                             {/* Acres Override */}
@@ -252,7 +262,7 @@ export function ServiceBookingModal({ service, isOpen, onClose }: ServiceBooking
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-muted-foreground">Field</span>
-                                        <span>{mockFields.find(f => f.id === selectedField)?.name}</span>
+                                        <span>{bookableFields.find(f => f.id === selectedField)?.name || '—'}</span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-muted-foreground">Area</span>
