@@ -32,7 +32,7 @@ agent:
   max_retry_backoff_ms: 600000
 
 hermes:
-  command: "hermes chat -q --yolo --source symphony -Q"
+  command: "hermes chat --yolo --source symphony -Q"
   turn_timeout_ms: 1800000
   stall_timeout_ms: 600000
 ---
