@@ -1,0 +1,307 @@
+{
+  "project": "Agri-OS",
+  "branchName": "ralph/agricultural-intelligence-enhancements",
+  "description": "Agri-OS staged agricultural autopilot: high-touch real-field pilot workflows first, then LLM-assisted recommendations, progressive delegation, and real-world strategy gameplay.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Add image upload types and data structures",
+      "description": "As a developer, I need data types for pest/disease image uploads so the system can handle photo-based identification.",
+      "acceptanceCriteria": [
+        "Create types/image-upload.ts with ImageUpload, IdentificationResult interfaces",
+        "Include fields: id, imageUrl, uploadDate, fieldId, identifiedPest/Disease, confidence, status",
+        "Export mock data for 3-4 sample image uploads with identification results",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Created types/image-upload.ts with ImageUpload, IdentificationResult interfaces, SeverityLevel and IdentificationStatus types, plus 4 mock image uploads with full identification results."
+    },
+    {
+      "id": "US-002",
+      "title": "Create ImageUploadModal component",
+      "description": "As a user, I want to upload pest/disease photos so the system can help identify problems.",
+      "acceptanceCriteria": [
+        "Create components/modals/ImageUploadModal.tsx",
+        "Modal has drag-and-drop zone and file picker button",
+        "Preview uploaded image before submission",
+        "Field selector dropdown to associate image with a field",
+        "Submit button triggers mock identification (uses mock data)",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Created ImageUploadModal.tsx with drag-and-drop zone, file picker, image preview, field selector dropdown, and submit button. Uses FIELDS from mock-data.ts and MOCK_IMAGE_UPLOADS for mock identification."
+    },
+    {
+      "id": "US-003",
+      "title": "Display AI identification results in ImageUploadModal",
+      "description": "As a user, I want to see identification results after uploading a photo.",
+      "acceptanceCriteria": [
+        "After mock upload, show loading state for 1.5 seconds",
+        "Display identified pest/disease name with confidence percentage",
+        "Show severity assessment (Low/Medium/High)",
+        "Display recommended actions based on identification",
+        "Include 'Add to Monitor' button to add to PestDiseaseMonitor",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Added loading state with 1.5s delay, identification results display with pest/disease name, confidence badge, severity assessment, recommended actions list, and 'Add to Monitor' button. Uses helper functions getConfidenceColor and getSeverityLevelColor from image-upload.ts."
+    },
+    {
+      "id": "US-004",
+      "title": "Add Image Upload button to Field Detail page",
+      "description": "As a user, I want quick access to upload pest/disease photos from field detail page.",
+      "acceptanceCriteria": [
+        "Add 'Upload Photo' button with Camera icon to field detail header",
+        "Button opens ImageUploadModal with field pre-selected",
+        "Button styled consistently with existing action buttons",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Added Camera icon import, imageUploadOpen state, Upload Photo button in header, and ImageUploadModal with preselectedFieldId prop."
+    },
+    {
+      "id": "US-005",
+      "title": "Create predictive analytics data types",
+      "description": "As a developer, I need data structures for outbreak predictions and risk forecasting.",
+      "acceptanceCriteria": [
+        "Create lib/predictive-analytics-data.ts",
+        "Define OutbreakPrediction interface with: pestType, probability, peakDate, affectedFields, riskFactors",
+        "Define SeasonalRisk interface with: season, risks[], historicalPatterns",
+        "Export mock predictions for current season",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "Created lib/predictive-analytics-data.ts with OutbreakPrediction, SeasonalRisk, RiskFactor, and PreventiveAction interfaces. Includes mock data for 4 outbreak predictions and seasonal risks for all seasons. Helper functions for risk level colors and icons included."
+    },
+    {
+      "id": "US-006",
+      "title": "Create PredictiveAnalyticsModal component",
+      "description": "As a user, I want to see outbreak predictions so I can take preventive action.",
+      "acceptanceCriteria": [
+        "Create components/modals/PredictiveAnalyticsModal.tsx",
+        "Display list of predicted outbreaks with probability percentages",
+        "Color-code by risk level (green <30%, yellow 30-60%, red >60%)",
+        "Show predicted peak dates for each outbreak",
+        "List affected fields for each prediction",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "Created PredictiveAnalyticsModal.tsx with outbreak predictions list, seasonal risk overview, color-coded risk levels, peak dates, and affected fields display. Uses helper functions from predictive-analytics-data.ts."
+    },
+    {
+      "id": "US-007",
+      "title": "Add risk factors and preventive actions to predictions",
+      "description": "As a user, I want to understand why an outbreak is predicted and what I can do.",
+      "acceptanceCriteria": [
+        "Each prediction shows contributing risk factors (weather, season, nearby outbreaks)",
+        "Display recommended preventive actions with urgency level",
+        "Include 'Schedule Prevention' button linking to TreatmentSchedulerModal",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": "Added risk factors display with icons and impact levels, preventive actions list with cost and effectiveness info, urgency badges, and Schedule Prevention button with onScheduleTreatment callback in PredictiveAnalyticsModal."
+    },
+    {
+      "id": "US-008",
+      "title": "Add Predictive Analytics button to dashboard",
+      "description": "As a user, I want quick access to outbreak predictions from the main dashboard.",
+      "acceptanceCriteria": [
+        "Add 'Predictions' button to dashboard header or WeatherCard area",
+        "Button has Brain or TrendingUp icon",
+        "Clicking opens PredictiveAnalyticsModal",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": "Added Brain icon button to WeatherCard header actions. Clicking opens PredictiveAnalyticsModal with onScheduleTreatment callback. Button styled consistently with existing Settings button."
+    },
+    {
+      "id": "US-009",
+      "title": "Create mobile scouting data types",
+      "description": "As a developer, I need data structures for scouting observations with GPS.",
+      "acceptanceCriteria": [
+        "Create lib/scouting-observations-data.ts",
+        "Define ScoutingObservation interface: id, fieldId, coordinates, observationType, severity, photoUrl, notes, timestamp",
+        "Define observationType enum: pest, disease, weed, irrigation, equipment, other",
+        "Export mock observations for multiple fields",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": "Enhanced existing lib/scouting-observations-data.ts with ObservationType and SeverityLevel types, ScoutingObservation interface with GPS coordinates, 10 mock observations across multiple fields, helper functions for icons/colors, and ScoutingObservationsStorage service for localStorage persistence."
+    },
+    {
+      "id": "US-010",
+      "title": "Create QuickScoutModal for rapid field observations",
+      "description": "As a user, I want to quickly log scouting observations from any page.",
+      "acceptanceCriteria": [
+        "Create components/modals/QuickScoutModal.tsx",
+        "Field selector dropdown",
+        "Observation type selector (pest/disease/weed/irrigation/equipment/other)",
+        "Severity selector (None/Low/Medium/High/Critical)",
+        "Notes textarea for description",
+        "Optional photo upload area",
+        "Submit button saves to mock storage",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": "Created QuickScoutModal.tsx with field selector, observation type grid selector (pest/disease/weed/irrigation/equipment/other), severity level selector (None/Low/Medium/High/Critical), notes textarea, optional photo upload with preview, and submit button that saves to ScoutingObservationsStorage with success animation."
+    },
+    {
+      "id": "US-011",
+      "title": "Add GPS coordinate capture to QuickScoutModal",
+      "description": "As a user, I want my location automatically captured when logging observations.",
+      "acceptanceCriteria": [
+        "Request geolocation permission when modal opens",
+        "Display current coordinates if available",
+        "Show 'Location unavailable' message if geolocation fails",
+        "Store coordinates with observation",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": "Implemented GPS coordinate capture using navigator.geolocation in QuickScoutModal useEffect. Displays loading spinner while locating, shows coordinates with accuracy when available, handles permission denied and other errors with user-friendly messages, stores coordinates with observation on submit."
+    },
+    {
+      "id": "US-012",
+      "title": "Create ScoutingHistoryModal to view past observations",
+      "description": "As a user, I want to see all scouting observations for a field.",
+      "acceptanceCriteria": [
+        "Create components/modals/ScoutingHistoryModal.tsx",
+        "Display observations as timeline/list sorted by date",
+        "Show observation type icon, severity badge, notes preview",
+        "Filter by observation type",
+        "Filter by date range",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": "Created ScoutingHistoryModal.tsx with observations list sorted by date (newest first), observation type icons (Bug, AlertTriangle, Leaf, Droplets, Wrench, FileText), severity badges with color coding, notes preview, photo thumbnails, GPS coordinates display, filters for type/severity/date range, and active filters indicator."
+    },
+    {
+      "id": "US-013",
+      "title": "Add Quick Scout button to AppShell header",
+      "description": "As a user, I want quick access to log observations from anywhere in the app.",
+      "acceptanceCriteria": [
+        "Add floating action button or header button with Clipboard/Plus icon",
+        "Button always visible in app header",
+        "Clicking opens QuickScoutModal",
+        "Styled consistently with app design",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": "Added Plus icon button to AppShell header next to NotificationBell. Button is always visible and opens QuickScoutModal when clicked. Styled consistently with existing header buttons."
+    },
+    {
+      "id": "US-014",
+      "title": "Add Scouting History button to Field Detail page",
+      "description": "As a user, I want to view scouting history for a specific field.",
+      "acceptanceCriteria": [
+        "Add 'Scouting History' button to field detail header",
+        "Button has History or List icon",
+        "Opens ScoutingHistoryModal filtered to current field",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": "Added History icon button to field detail page header alongside other action buttons. Clicking opens ScoutingHistoryModal filtered to the current field. Styled consistently with existing buttons like Upload Photo and Log Harvest."
+    },
+    {
+      "id": "US-015",
+      "title": "Create Real-Field Pilot Mode",
+      "description": "As an operator, I need to manage friendly farmer test plots with real field metadata so Agri-OS can be piloted this season without depending on perfect sensors or multispectral analysis.",
+      "acceptanceCriteria": [
+        "Add a clear real-pilot field type or mode separate from demo/game fields",
+        "Capture farmer/contact, crop, area, location, planting date or crop stage, and notes",
+        "Allow real pilot fields to be listed and opened from the app",
+        "Keep the workflow usable without multispectral imagery, soil sensors, or paid analysis software",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Add pilot observation logging",
+      "description": "As an operator, I want to log manual scouting observations, photos, weather context, and confidence so I can build a trusted field timeline.",
+      "acceptanceCriteria": [
+        "Observation form supports field, date, crop stage, issue type, severity, notes, photos, weather context, and confidence",
+        "Observations are stored with source metadata and visible in a field timeline",
+        "Workflow works with phone photos and manual notes when drone data is unavailable",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Create conservative recommendation records",
+      "description": "As a farmer or operator, I want every recommendation to show evidence, uncertainty, cost-benefit context, and approval state before any action is taken.",
+      "acceptanceCriteria": [
+        "Recommendations include evidence, missing data, uncertainty, expected cost/benefit, urgency, and next check date",
+        "Recommendation states include monitor, recommended, needs confirmation, approved, rejected, completed, and outcome pending",
+        "High-risk actions such as spraying, irrigation, fertilizer, and service dispatch require human approval",
+        "Recommendations remain conservative when data is incomplete",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Add LLM advisor workflow",
+      "description": "As an operator, I want the LLM orchestrator to summarize field context, ask for missing data, and draft farmer-friendly recommendations without bypassing guardrails.",
+      "acceptanceCriteria": [
+        "LLM advisor receives structured field, observation, weather, and recommendation context",
+        "Advisor output includes summary, missing-data questions, action options, and farmer-friendly explanation",
+        "Prompt context and response summary are auditable",
+        "LLM output cannot directly dispatch high-risk real-world actions",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Build farmer-facing pilot report",
+      "description": "As an operator, I want to show farmers a simple report of observations, recommendations, actions, and follow-up outcomes so Agri-OS earns trust.",
+      "acceptanceCriteria": [
+        "Report shows field metadata, timeline, observations, photos, recommendations, decisions, completed actions, and follow-up outcomes",
+        "Report distinguishes observed facts, AI-assisted interpretation, and operator/farmer decisions",
+        "Report remains useful when no multispectral data exists",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Add progressive delegation controls",
+      "description": "As a farmer, I want to delegate only the level of automation I trust, from manual assistance to bounded autopilot.",
+      "acceptanceCriteria": [
+        "Delegation levels are visible per field or action type: manual, assist, schedule, coordinate, autopilot",
+        "UI explains what Agri-OS is allowed to do at each level",
+        "User can downgrade delegation immediately",
+        "Delegation changes are stored in the field timeline or audit history",
+        "Typecheck passes"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

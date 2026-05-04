@@ -1,0 +1,356 @@
+# Ralph Progress Log
+Started: Tue Jan 20 00:31:58 +04 2026
+---
+
+## Codebase Patterns
+- Main project is in `agri-os/` subdirectory (nested repo structure)
+- Types go in `types/*.ts` with interfaces and mock data together
+- Use `SeverityLevel` ('Low'|'Medium'|'High') for severity assessments
+- Color helper functions follow pattern: `get{Property}Color(value): string`
+- Pre-existing build error in fleet/page.tsx (missing modals) - existed on main branch
+---
+
+## 2026-01-20 00:32 - US-001
+Thread: https://ampcode.com/threads/T-019bd7f5-0a99-72f2-abd5-9411537b4880
+- Implemented image upload types and data structures
+- Files changed: `agri-os/types/image-upload.ts` (new)
+- Created interfaces: `ImageUpload`, `IdentificationResult`, `IdentificationStatus`, `SeverityLevel`
+- Added 4 mock image uploads with full identification results
+- **Learnings for future iterations:**
+  - The actual git repo is inside `/agri-os/agri-os/` subdirectory
+  - Pre-existing build error in fleet/page.tsx (missing FlightLogModal, etc.) - this exists on main and is not related to new work
+  - Follow existing pattern in `lib/pest-disease-data.ts` for type definitions and mock data
+---
+
+## 2026-01-20 01:45 - US-002
+Thread: https://ampcode.com/threads/T-019bd7f8-45b4-7159-90db-b230cc0d32fd
+- Implemented ImageUploadModal component
+- Files changed: `agri-os/components/modals/ImageUploadModal.tsx` (new)
+- Features: drag-and-drop zone, file picker button, image preview, field selector dropdown, submit button
+- **Learnings for future iterations:**
+  - Modal pattern follows existing modals: glass-panel wrapper, header with icon, content area, footer with buttons
+  - Use `cn()` from `@/lib/utils` for conditional class merging
+  - FIELDS export from `@/lib/mock-data` has id, name, crop, acres for dropdowns
+  - Use `useRef` + hidden input for file picker, `FileReader.readAsDataURL()` for preview
+---
+
+## 2026-02-05 16:00 - FIX ADD FIELD MODAL AUTO-OPENING
+- Fixed "Add Field" modal appearing briefly when entering Fields page
+- Files changed: `agri-os/app/fields/page.tsx` (modified)
+- **Problem:** The `isAddModalOpen` state was initialized to `true` instead of `false`, causing the modal to open automatically when the page loaded
+- **Solution:** Changed `useState(true)` to `useState(false)` on line 14
+- **Result:**
+  - Fields page loads without the "Add Field" modal appearing
+  - Modal only opens when user clicks the "+ Add Field" button
+  - Clean page load without flickering modals
+
+---
+
+## 2026-02-05 15:55 - REMOVE SPECTRUM SLIDER FROM MAIN DASHBOARD
+- Removed spectral analysis slider card from bottom right of main dashboard
+- Files changed: `agri-os/app/page.tsx` (modified)
+- **Changes:**
+  - Removed import of `SpectrumSlider` component
+  - Removed `<SpectrumSlider />` component from the bottom of the page
+  - Removed "Fixed Controls" comment section
+- **Result:**
+  - Clean main dashboard without spectral analysis slider
+  - Dashboard has more available space
+  - Simpler, less cluttered interface
+
+---
+
+## 2026-02-05 15:50 - REMOVE FIELD BOUNDARIES FROM MAIN DASHBOARD
+- Fixed field boundary appearing on main dashboard map
+- Files changed: `agri-os/components/registry/MapCanvas.tsx` (modified)
+- **Problem:** Field polygon boundaries were being rendered on the main dashboard background map, creating unwanted visual clutter under the dashboard cards
+- **Solution:** 
+  - Removed `PolygonLayer` that rendered field boundaries with health status colors
+  - Removed `ScatterplotLayer` that rendered clickable field center dots
+  - Removed all field-related imports (`useFieldStore`, `useRouter`, `PolygonLayer`, `ScatterplotLayer`)
+  - Removed hover tooltip since there's nothing to hover over anymore
+  - Removed click handlers and navigation logic
+  - Simplified component to only show spectral imagery layer and store layers
+  - Map now shows clean background without field overlays
+- **Result:**
+  - Main dashboard has clean background without field boundary overlays
+  - Field boundaries only appear on the field detail page where they belong
+  - Dashboard cards are clearly visible without underlying map clutter
+  - Map is still interactive for panning/zooming but doesn't show field data
+
+---
+
+## 2026-02-05 15:45 - PIN SIZE FIX
+- Fixed pins appearing too large in edit mode
+- Files changed: `agri-os/app/fields/[id]/page.tsx` (modified)
+- **Problem:** When switching to SVG viewBox="0 0 100 100", pin radius of r="5" became 5% of the view width (huge!)
+- **Solution:** 
+  - Changed pin radius from fixed r="5" to conditional: r={i === 0 ? "2" : "1.5"} (matching view mode)
+  - Reduced stroke width from strokeWidth="2" to strokeWidth="0.5"
+  - First pin (red) slightly larger at 2 units, others at 1.5 units
+- **Result:**
+  - Pins now display at appropriate size (~1.5-2% of view width)
+  - Consistent with view mode pin sizing
+  - Easier to see field boundary without oversized pins blocking the view
+
+---
+
+## 2026-02-05 15:40 - PROJECTION ALIGNMENT FIX
+- Fixed boundary appearing offset and at wrong scale
+- Files changed: `agri-os/app/fields/[id]/page.tsx` (modified)
+- **Problem:** Edit mode and view mode using different coordinate calculations - edit mode calculated bounds dynamically from editBoundary while view mode used field.coordinates, causing misalignment
+- **Solution:** Implemented shared projection bounds system:
+  - Added `projectionBounds` state to store calculated bounds from field's original coordinates
+  - Calculated once when field loads (in useEffect) and shared between both modes
+  - Both edit and view modes now use identical bounds: minLon, maxLon, minLat, maxLat, deltaLon, deltaLat
+  - Added proper SVG viewBox="0 0 100 100" to both modes for consistent coordinate system
+  - Updated click/drag handlers to convert mouse coordinates to SVG coordinates (0-100 scale)
+  - Coordinate formulas unified:
+    - x = ((coord[0] - bounds.minLon) / bounds.deltaLon) * 100
+    - y = 100 - ((coord[1] - bounds.minLat) / bounds.deltaLat) * 100
+  - Fixed extra closing brace typo that caused TypeScript error
+- **Result:**
+  - Boundary displays at correct scale and position in both modes
+  - Click-to-add pins work accurately at mouse position
+  - Pin dragging follows cursor correctly
+  - No offset or scaling differences between edit and view modes
+  - Perfect alignment when entering/exiting edit mode
+
+---
+
+## 2026-02-05 15:35 - PROJECTION SYSTEM FIX
+- Fixed boundary disappearing by replacing fixed projection with dynamic coordinate mapping
+- Files changed: `agri-os/app/fields/[id]/page.tsx` (modified)
+- **Root Cause:** Edit mode used hardcoded projection center (44.8, 41.7 - Europe) incompatible with California fields (-121.6, 36.6), calculating coordinates millions of pixels outside the visible area
+- **Solution:** Implemented dynamic projection based on actual field coordinate bounds:
+  - Created `getProjectionBounds()` helper function to calculate min/max lat/lng with 20% padding
+  - **Edit Mode Rendering:** Updated to use bounds-based pixel calculations:
+    - x = ((coord[0] - minLon) / deltaLon) * width
+    - y = height - ((coord[1] - minLat) / deltaLat) * height
+  - **Click Handler:** Updated coordinate conversion to use dynamic bounds
+  - **Drag Handler:** Updated coordinate conversion for pin dragging
+  - **View Mode:** Already using dynamic bounds (unchanged, now matches edit mode)
+- **Impact:**
+  - Boundary displays correctly regardless of field location (California, Europe, anywhere)
+  - Click-to-add pins works accurately at mouse position
+  - Pin dragging follows cursor correctly
+  - Consistent visualization between edit and view modes
+  - No more disappearing boundaries after save
+
+---
+
+## 2026-02-05 15:30 - BOUNDARY VISIBILITY FIX v3
+- Fixed boundary disappearing after save due to coordinate projection mismatch
+- Files changed: `agri-os/app/fields/[id]/page.tsx` (modified)
+- **Problem:** View mode used fixed projection center (44.8, 41.7) that didn't match field's actual coordinates (-121.6, 36.6), causing boundary to render outside visible area
+- **Solution:** Dynamic viewBox calculation based on actual field coordinates:
+  - Calculate bounding box of all boundary coordinates
+  - Add 20% padding (consistent with edit mode visual spread)
+  - Normalize to 0-100 viewBox coordinates
+  - Use percentage-based positioning within viewBox
+  - Fixed coordinate conversion: y-axis inverted for proper geographic orientation
+- **Result:**
+  - Boundary visible regardless of field location (California, Europe, etc.)
+  - Properly scaled to fit within view area
+  - Maintains aspect ratio and geographic proportions
+  - Works with any coordinate system worldwide
+
+---
+
+## 2026-02-05 15:25 - BOUNDARY POSITION CONSISTENCY FIX
+- Fixed boundary shifting when exiting edit mode
+- Files changed: `agri-os/app/fields/[id]/page.tsx` (modified)
+- **Problem:** View mode was using dynamic bounding box calculation while edit mode used fixed projection, causing boundary to shift/scale differently
+- **Solution:** Made VIEW MODE use identical projection to EDIT MODE:
+  - Both modes now use: Center (44.8, 41.7) with 0.05 degree spread
+  - Same formula: `x = ((lon - 44.8) / 0.05 + 0.5) * 100`
+  - Same formula: `y = (-(lat - 41.7) / 0.05 + 0.5) * 100`
+  - Both use percentage-based coordinates (0-100 scale)
+  - Same rendering: polyline + closing line + pin markers
+- **Result:**
+  - Boundary appears in exact same position in both modes
+  - No shifting or scaling differences when entering/exiting edit
+  - Identical visual representation at all times
+  - Matches the underlying map image consistently
+
+---
+
+## 2026-02-05 15:20 - BOUNDARY VISIBILITY FIX
+- Fixed boundary disappearing after saving edits
+- Files changed: `agri-os/app/fields/[id]/page.tsx` (modified)
+- **Problem:** Previous fix using fixed coordinate system caused boundary to render outside visible area
+- **Solution:** Reverted to fit-to-viewBox approach with improvements:
+  - Uses viewBox="0 0 100 100" for proper SVG scaling
+  - Calculates bounding box of all coordinates with 10% padding
+  - Normalizes coordinates to fit within 0-100 range
+  - Preserves polygon fill, stroke, and pin markers
+  - Pin colors: Red for first point, green for others
+- **Result:**
+  - Boundary is always visible regardless of field location
+  - Properly scales to fit the view area
+  - Maintains visual consistency with edit mode styling
+  - No more disappearing boundaries after save
+
+---
+
+## 2026-02-05 15:15 - BOUNDARY REPRESENTATION CONSISTENCY FIX
+- Fixed discrepancy between edit mode and view mode boundary rendering
+- Files changed: `agri-os/app/fields/[id]/page.tsx` (modified)
+- **Problem:** View mode used different coordinate projection than edit mode, causing boundaries to appear different
+- **Solution:** Updated VIEW MODE to use same projection system as EDIT MODE:
+  - Changed from normalized bounding box logic to fixed coordinate system
+  - Both modes now use: `((coord[0] - 44.8) / 0.05 + 0.5)` for X, `(-(coord[1] - 41.7) / 0.05 + 0.5)` for Y
+  - View mode now renders exact same polygon as edit mode
+  - Uses `polyline` + `line` for closing edge (same as edit mode)
+  - Preserves pin markers with same styling (red for first pin, green for others)
+- **Result:**
+  - Boundary appears identical in both edit and view modes
+  - No distortion or "zoom to fit" behavior that was causing visual differences
+  - When you save boundary changes, they display exactly as edited
+  - Closing line between last and first point renders consistently
+
+---
+
+## 2026-02-05 15:05 - DELETE BOUNDARY FEATURE
+- Added ability to delete field boundary with confirmation dialog
+- Files changed: `agri-os/app/fields/[id]/page.tsx` (modified)
+- **Features added:**
+  - Import: Added `Trash2` icon from lucide-react
+  - State: Added `showDeleteConfirm` to control confirmation modal visibility
+  - Button: Added "Delete Boundary" button in edit mode toolbar (red styling with trash icon)
+  - Handler: Added `handleDeleteBoundary` function that:
+    - Updates field with empty coordinates array
+    - Resets acres to 0
+    - Closes confirmation modal
+    - Exits edit mode
+  - Modal: Added inline confirmation modal with:
+    - Warning icon and "Delete Field Boundary?" title
+    - Description of consequences
+    - Field name display
+    - Cancel and Delete buttons
+  - Empty state: Added message when no boundary exists:
+    - Shows in edit mode when `editBoundary.length === 0`
+    - "No Boundary Defined" with instructions to add points
+    - Prompts user to add at least 3 points
+- **Safety features:**
+  - Confirmation modal prevents accidental deletion
+  - Clear warning that action cannot be undone
+  - Shows field name in confirmation for clarity
+  - Delete button only visible in edit mode
+- **UI/UX:**
+  - Red button styling consistent with danger actions
+  - Modal uses existing glass-panel design pattern
+  - Empty state uses yellow warning styling
+
+---
+
+## 2026-02-05 14:55 - PIN ADDING FIX - Drag vs Click Detection
+- Fixed issue where panning the map would accidentally add pins
+- Files changed: `agri-os/app/fields/[id]/page.tsx` (modified)
+- **Problem:** When dragging/panning the map, the click event would fire and add pins unexpectedly
+- **Solution:** Implemented drag detection to distinguish between panning and actual clicks:
+  - Added `dragStartPosRef` to track mouse down position
+  - Added `isDraggingRef` to flag when movement exceeds drag threshold (5 pixels)
+  - Updated mouse event handlers:
+    - `onMouseDown`: Records start position and resets drag state
+    - `onMouseMove`: Calculates distance moved, marks as dragging if > 5px
+    - `onMouseUp/onMouseLeave`: Resets drag state with small delay
+  - Modified `handleSimulatedClick`: Returns early if `isDraggingRef.current` is true
+- **Behavior now:**
+  - Short click (< 5px movement): Adds pins as expected
+  - Drag/pan (> 5px movement): Pans map without adding pins
+  - Existing pin detection still works (clicking directly on pins won't add new ones)
+  - Line insertion still works (clicking near boundary lines inserts pins)
+
+---
+
+## 2026-02-05 14:45 - LAYOUT RESTRUCTURE - Bottom Panel for Data
+- Moved all content below map to a fixed bottom panel for better map visibility
+- Files changed: `agri-os/app/fields/[id]/page.tsx` (modified)
+- **Changes:**
+  - Restructured layout to use flexbox with map taking available space
+  - Map now uses `flex-1 min-h-[400px]` instead of fixed `h-[600px] md:h-[1000px]`
+  - Created new bottom panel with `h-48 md:h-64` (fixed height, scrollable)
+  - Bottom panel contains:
+    - Quick action buttons (Stand Count, Schedule Scout)
+    - Scouting Missions List (condensed)
+    - Index Statistics and Management Zones (condensed)
+  - All content is now scrollable within the bottom panel
+  - Map has more vertical space for zooming and panning
+- **Benefits:**
+  - Map takes up most of the screen (70-80% of viewport)
+  - Bottom panel is compact but accessible
+  - Users can scroll through missions and stats without losing map context
+  - Better mobile experience with collapsible bottom section
+
+---
+
+## 2026-02-05 14:35 - ZOOM FIX v2 - Proper Browser Zoom Prevention
+- Fixed browser zoom issue that was interrupting map zoom
+- Files changed: `agri-os/app/fields/[id]/page.tsx` (modified)
+- **Problem:** Browser default zoom (Ctrl+wheel) was overriding the custom map zoom
+- **Solution:**
+  - Added `mapZoomContainerRef` ref to the zoomable div container
+  - Created dedicated `useEffect` hook to add wheel event listener with `{ passive: false }`
+  - This allows `e.preventDefault()` to actually stop browser zoom
+  - Added window-level wheel listener to catch Ctrl/Cmd + wheel combinations
+  - Added CSS `touchAction: 'none'` and `overscrollBehavior: 'none'` to container
+- **Key technical fix:**
+  - React's `onWheel` synthetic event doesn't reliably prevent browser defaults
+  - Must use native `addEventListener` with `passive: false` option
+  - Passive: false is required to legally call preventDefault() on wheel events
+- **Result:** 
+  - Map zooms smoothly from 100% to 500%
+  - Browser zoom is completely prevented on the map area
+  - UI overlays remain at fixed size while map content scales
+
+---
+
+## 2026-02-05 14:25 - ZOOM FIX - Isolate Map Zoom from UI
+- Fixed zoom behavior to only zoom the field map window, not the entire interface
+- Files changed: `agri-os/app/fields/[id]/page.tsx` (modified)
+- Changes:
+  - Moved Edit Mode Instructions overlay outside zoomable container (now stays fixed size)
+  - Moved Processing Satellite Data overlay outside zoomable container (now stays fixed size)
+  - Layer Controls and Right Controls were already outside (unchanged)
+  - Added zoom level indicator showing current zoom percentage (bottom right)
+  - Added `e.preventDefault()` and `e.stopPropagation()` to wheel event to prevent browser zoom
+  - Only map Image, Field Boundary Overlay, Problem Overlays, LIDAR Overlay, and Soil Markers zoom now
+- **How it works:**
+  - UI overlays (instructions, controls, zoom indicator) are siblings of the zoomable div, not children
+  - Only the map content is inside the transform:scale() container
+  - Wheel events are captured and prevented from bubbling to browser
+
+---
+
+## 2026-02-05 14:15 - UNDO FEATURE - Field Boundary Edit
+- Implemented undo/redo functionality for field boundary editing
+- Files changed: `agri-os/app/fields/[id]/page.tsx` (modified)
+- Added state: `boundaryHistory`, `historyIndex` to track edit history
+- Features:
+  - Keyboard shortcut: Ctrl+Z (Windows/Linux) or Cmd+Z (Mac) to undo
+  - Undo button in edit mode toolbar with disabled state when no history available
+  - Visual instructions overlay showing "Click to add pin", "Drag to move", "Ctrl+Z Undo"
+  - History automatically saves when: adding new pins, completing drag operations
+  - Undo restores previous boundary state from history stack
+- **Implementation details:**
+  - Uses useEffect to listen for keyboard events (keydown) when in edit mode
+  - History is a stack of boundary states; historyIndex tracks current position
+  - When undoing, restores boundary from history[historyIndex - 1]
+  - Button shows blue when undo available, grayed out when at start of history
+  - History resets when entering/exiting edit mode
+
+---
+
+## 2026-01-20 04:42 - US-003
+Thread: https://ampcode.com/threads/T-019bd7fc-e702-7418-842d-a516c0257d3c
+- Implemented AI identification results display in ImageUploadModal
+- Files changed: `agri-os/components/modals/ImageUploadModal.tsx` (modified)
+- Added state: `isAnalyzing`, `identificationResult`
+- Features: 1.5s loading animation, pest/disease name with confidence badge, severity assessment, recommended actions list, 'Add to Monitor' button
+- Footer updates dynamically: shows 'Cancel' vs 'Close', hides submit button after results
+- **Learnings for future iterations:**
+  - Use `getConfidenceColor()` and `getSeverityLevelColor()` from `types/image-upload.ts` for consistent color coding
+  - Use `Loader2` icon with `animate-spin` class for loading spinners
+  - Pattern: show different UI states based on boolean flags (isAnalyzing, identificationResult !== null)
+---

@@ -1,0 +1,110 @@
+{
+  "events": [
+    {
+      "id": "a8bffefd-44ea-4322-85f6-1f2e94a64e71",
+      "fieldId": "field-1",
+      "sensorId": "soil-2",
+      "sensorType": "soil_moisture",
+      "metric": "moisture",
+      "value": 46.7,
+      "unit": "%",
+      "timestamp": "2026-02-19T11:00:00.000Z",
+      "qualityScore": 95,
+      "qualityFlags": [],
+      "confidence": 93,
+      "batchId": "batch-test-2"
+    }
+  ],
+  "state": {
+    "field-1": [
+      {
+        "id": "de787c5a-4cdb-4b4d-80d8-5118d9db334a",
+        "fieldId": "field-1",
+        "metric": "moisture",
+        "value": 45.47,
+        "unit": "%",
+        "source": "fused",
+        "timestamp": "2026-02-19T18:49:23.835Z",
+        "confidence": 93,
+        "provenance": {
+          "sensorId": "soil-2",
+          "sensorType": "soil_moisture",
+          "batchId": "batch-test-2",
+          "qualityScore": 95,
+          "qualityFlags": [
+            "manual_sensor_reconciled"
+          ]
+        }
+      }
+    ]
+  },
+  "manual": [
+    {
+      "fieldId": "field-1",
+      "metric": "moisture",
+      "value": 44.2,
+      "unit": "%",
+      "observedAt": "2026-02-19T18:49:23.830Z",
+      "observedBy": "scout-1",
+      "confidence": 90,
+      "id": "c3925134-8c21-47f8-8212-2806a838c8b5"
+    }
+  ],
+  "reconciliation": [
+    {
+      "id": "13e56e1f-906a-43e7-a879-c78de13823ba",
+      "fieldId": "field-1",
+      "metric": "moisture",
+      "status": "sensor_only",
+      "sensorValue": 46.7,
+      "resolvedEnvelope": {
+        "id": "3d883d1a-ed1e-46af-8cf4-f98a66381ab3",
+        "fieldId": "field-1",
+        "metric": "moisture",
+        "value": 46.7,
+        "unit": "%",
+        "source": "sensor",
+        "timestamp": "2026-02-19T11:00:00.000Z",
+        "confidence": 93,
+        "provenance": {
+          "sensorId": "soil-2",
+          "sensorType": "soil_moisture",
+          "batchId": "batch-test-2",
+          "qualityScore": 95,
+          "qualityFlags": []
+        }
+      },
+      "createdAt": "2026-02-19T18:48:34.904Z"
+    },
+    {
+      "id": "4984ba61-00ac-4d39-a1dd-47ec4da9c45f",
+      "fieldId": "field-1",
+      "metric": "moisture",
+      "status": "matched",
+      "sensorValue": 46.7,
+      "manualValue": 44.2,
+      "delta": -2.5,
+      "deltaPercent": 5.353319057815845,
+      "resolvedEnvelope": {
+        "id": "de787c5a-4cdb-4b4d-80d8-5118d9db334a",
+        "fieldId": "field-1",
+        "metric": "moisture",
+        "value": 45.47,
+        "unit": "%",
+        "source": "fused",
+        "timestamp": "2026-02-19T18:49:23.835Z",
+        "confidence": 93,
+        "provenance": {
+          "sensorId": "soil-2",
+          "sensorType": "soil_moisture",
+          "batchId": "batch-test-2",
+          "qualityScore": 95,
+          "qualityFlags": [
+            "manual_sensor_reconciled"
+          ]
+        }
+      },
+      "createdAt": "2026-02-19T18:49:23.835Z"
+    }
+  ]
+}
