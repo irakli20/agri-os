@@ -2,7 +2,7 @@
 
 # Agri-OS Working Anchor
 
-- Treat `/Users/macbookpro/agri-os/agri-os` on branch `chore/mvp-stabilization-2026-04-08` as the current most advanced Agri-OS app unless the user explicitly changes the anchor.
+- Treat `/Users/macbookpro/agri-os/agri-os` on branch `agri-os-latest-mac` as the current most advanced Agri-OS app unless the user explicitly changes the anchor.
 - When the user says "Agri-OS app", "latest app", "strategy mode", or "weekly plan", work in this repo/branch first, not older branches, nested backups, or unrelated repos.
 - The local dev server for this app is `npm run dev` from `/Users/macbookpro/agri-os/agri-os`; the verified latest app loaded at `http://localhost:3000` with the `Agri-OS Control` shell and `Switch To Strategy` control.
 - Do not delete old app copies, branches, backups, or build artifacts unless the user explicitly approves a cleanup plan after seeing what will be removed.
