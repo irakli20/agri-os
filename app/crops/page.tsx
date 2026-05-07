@@ -1,6 +1,6 @@
 import { AppShell } from '@/components/layout/AppShell';
 import { FIELDS } from '@/lib/mock-data';
-import { Sprout, Calendar, TrendingUp, Droplets, Sun, AlertTriangle } from 'lucide-react';
+import { Sprout, Calendar, TrendingUp, Droplets, AlertTriangle, CalendarDays, Flower2, Snowflake, Sun, Wheat } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Crop growth stage data
@@ -51,6 +51,119 @@ const CROP_DATA = [
         recommendations: ['Critical: Apply fungicide for downy mildew', 'Thin plants if needed', 'Monitor for leaf miners'],
     },
 ];
+
+const CROP_CALENDAR_MONTHS = ['MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC', 'JAN', 'FEB'];
+
+const CROP_CALENDAR_ROWS = [
+    { crop: 'Wheat', icon: '🌾', planting: [[6, 7]], harvest: [[4, 5]] },
+    { crop: 'Barley', icon: '🌾', planting: [[6, 7]], harvest: [[3, 4]] },
+    { crop: 'Canola', icon: '🌼', planting: [[5, 6]], harvest: [[4, 5]] },
+    { crop: 'Oat', icon: '🌿', planting: [[0, 1]], harvest: [[4, 5]] },
+    { crop: 'Corn', icon: '🌽', planting: [[1, 2]], harvest: [[7, 8]] },
+    { crop: 'Sunflowers', icon: '🌻', planting: [[0, 1]], harvest: [[7, 8]] },
+    { crop: 'Soybeans', icon: '🫘', planting: [[1, 2]], harvest: [[7, 8]] },
+    { crop: 'Potatoes', icon: '🥔', planting: [[0, 1]], harvest: [[5, 6]] },
+    { crop: 'Rice', icon: '🌾', planting: [[1, 2]], harvest: [[5, 6]] },
+    { crop: 'Long Grain Rice', icon: '🌾', planting: [[1, 1]], harvest: [[6, 6]] },
+    { crop: 'Sugar Beet', icon: '🌱', planting: [[0, 1]], harvest: [[7, 8]] },
+];
+
+function CropCalendarBar({ range, type }: { range: number[]; type: 'planting' | 'harvest' }) {
+    const [start, end] = range;
+    const left = `${(start / CROP_CALENDAR_MONTHS.length) * 100}%`;
+    const width = `${((end - start + 1) / CROP_CALENDAR_MONTHS.length) * 100}%`;
+
+    return (
+        <div
+            className={cn(
+                "absolute top-1/2 h-4 -translate-y-1/2 rounded-full shadow-lg",
+                type === 'planting'
+                    ? "bg-lime-500 shadow-lime-500/20"
+                    : "bg-orange-600 shadow-orange-600/20"
+            )}
+            style={{ left, width }}
+        />
+    );
+}
+
+function CropCalendar() {
+    return (
+        <section className="card-soft rounded-2xl overflow-hidden elevate-card">
+            <div className="flex flex-col gap-4 border-b border-lime-500/30 px-5 py-5 lg:flex-row lg:items-start lg:justify-between">
+                <div className="flex items-center gap-4">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-lime-500 text-black shadow-lg shadow-lime-500/20">
+                        <CalendarDays className="h-8 w-8" />
+                    </div>
+                    <div>
+                        <p className="page-header-meta">Season Planner</p>
+                        <h2 className="text-2xl font-semibold tracking-wide">Crop Calendar</h2>
+                    </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-5 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                        <span className="h-4 w-4 rounded bg-lime-500 shadow-sm shadow-lime-500/40" />
+                        Planting Season
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="h-4 w-4 rounded bg-orange-600 shadow-sm shadow-orange-600/40" />
+                        Harvest Season
+                    </div>
+                </div>
+            </div>
+
+            <div className="overflow-x-auto">
+                <div className="min-w-[1080px]">
+                    <div className="grid grid-cols-[190px_1fr]">
+                        <div className="border-r border-white/10" />
+                        <div className="relative">
+                            <div className="grid grid-cols-12 border-b border-lime-500/30">
+                                {CROP_CALENDAR_MONTHS.map((month) => (
+                                    <div key={month} className="border-r border-white/10 px-3 py-5 text-center text-sm font-bold tracking-wide text-foreground/90 last:border-r-0">
+                                        {month}
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="pointer-events-none absolute inset-x-0 -top-12 grid grid-cols-4 text-muted-foreground/80">
+                                <Flower2 className="mx-auto h-7 w-7" />
+                                <Sun className="mx-auto h-7 w-7" />
+                                <Wheat className="mx-auto h-7 w-7" />
+                                <Snowflake className="mx-auto h-7 w-7" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {CROP_CALENDAR_ROWS.map((row, index) => (
+                        <div
+                            key={row.crop}
+                            className={cn(
+                                "grid grid-cols-[190px_1fr] border-b border-white/5",
+                                index % 2 === 0 ? "bg-white/[0.045]" : "bg-black/10"
+                            )}
+                        >
+                            <div className="flex items-center gap-3 border-r border-white/10 px-5 py-4">
+                                <span className="text-2xl leading-none">{row.icon}</span>
+                                <span className="font-semibold text-foreground/90">{row.crop}</span>
+                            </div>
+                            <div className="relative min-h-[56px]">
+                                <div className="absolute inset-0 grid grid-cols-12">
+                                    {CROP_CALENDAR_MONTHS.map((month) => (
+                                        <div key={month} className="border-r border-white/10 last:border-r-0" />
+                                    ))}
+                                </div>
+                                {row.planting.map((range) => (
+                                    <CropCalendarBar key={`plant-${range.join('-')}`} range={range} type="planting" />
+                                ))}
+                                {row.harvest.map((range) => (
+                                    <CropCalendarBar key={`harvest-${range.join('-')}`} range={range} type="harvest" />
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </section>
+    );
+}
 
 export default function CropsPage() {
     const getWaterColor = (needs: string) => {
@@ -113,6 +226,8 @@ export default function CropsPage() {
                         </div>
                     </div>
                 </div>
+
+                <CropCalendar />
 
                 {/* Crops Grid */}
                 <div className="space-y-4">

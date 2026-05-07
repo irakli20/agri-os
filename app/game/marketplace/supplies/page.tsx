@@ -5,12 +5,167 @@ import { GameShell } from '@/components/game/GameShell';
 import { MarketplaceNav } from '@/components/game/MarketplaceNav';
 import { useSuppliesStore, getCategoryDisplayName, getCategoryIcon } from '@/lib/supplies-store';
 import { useGameStore } from '@/lib/game-store';
-import { DollarSign, Package, ShoppingCart, Info, CheckCircle2, ChevronRight, AlertCircle } from 'lucide-react';
+import { DollarSign, Package, ShoppingCart, Info, CheckCircle2, ChevronRight, AlertCircle, Sprout, Tractor, Warehouse, KeyRound } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 
 const CATEGORIES = ['all', 'seeds', 'fertilizer', 'pesticide', 'fuel', 'equipment'] as const;
 type CategoryTab = typeof CATEGORIES[number];
+
+const SEED_IMAGES = [
+    '/marketplace/seeds/pioneer-tote.png',
+    '/marketplace/seeds/seed-bigbag.png',
+    '/marketplace/seeds/pioneer-pallet.png',
+];
+
+function SeedProductShowcase({
+    seedProducts,
+    selectedSeedId,
+    setSelectedSeedId,
+    inventory,
+}: {
+    seedProducts: any[];
+    selectedSeedId: string;
+    setSelectedSeedId: (id: string) => void;
+    inventory: any[];
+}) {
+    if (seedProducts.length === 0) return null;
+
+    const selectedSeed = seedProducts.find((product) => product.id === selectedSeedId) || seedProducts[0];
+    const selectedStock = selectedSeed.stockQuantity * (selectedSeed.unit === 'kg' ? 25 : 1);
+    const ownedSeed = inventory.find((item) => item.id === selectedSeed.id);
+
+    return (
+        <section className="mb-8 overflow-hidden rounded-3xl border border-white/10 bg-[#202321] shadow-2xl">
+            <div className="flex flex-col gap-4 border-b border-white/15 px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex items-center gap-4">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-lime-500 text-black shadow-lg shadow-lime-500/20">
+                        <Tractor className="h-8 w-8" />
+                    </div>
+                    <div>
+                        <h2 className="text-3xl font-light uppercase tracking-[0.16em] text-white">Seeds</h2>
+                        <p className="mt-1 text-sm text-muted-foreground">Seed stock for corn planters and row-crop sowing machines.</p>
+                    </div>
+                </div>
+                <div className="rounded-2xl bg-black px-5 py-3 text-sm font-semibold uppercase tracking-wide text-white">
+                    Seed SKUs: <span className="text-lime-400">{seedProducts.length}</span>
+                </div>
+            </div>
+
+            <div className="overflow-x-auto px-5 py-7">
+                <div className="grid min-w-[860px] grid-cols-3 gap-5 lg:grid-cols-4">
+                    {seedProducts.map((seed, index) => {
+                        const isSelected = seed.id === selectedSeed.id;
+                        const ownedItem = inventory.find((item) => item.id === seed.id);
+                        const seedImage = SEED_IMAGES[index % SEED_IMAGES.length];
+
+                        return (
+                            <button
+                                key={seed.id}
+                                onClick={() => setSelectedSeedId(seed.id)}
+                                className={cn(
+                                    "group relative overflow-hidden rounded-2xl border bg-[#262927] text-left shadow-xl transition-all",
+                                    isSelected ? "border-lime-400 shadow-lime-500/10" : "border-white/10 hover:border-white/25"
+                                )}
+                            >
+                                <div className="relative flex h-56 items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.14),transparent_56%)]">
+                                    <Image
+                                        src={seedImage}
+                                        alt={seed.name}
+                                        fill
+                                        sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 100vw"
+                                        className="object-cover object-center transition-transform duration-500 group-hover:scale-[1.04]"
+                                        priority={index === 0}
+                                    />
+                                    <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#262927] to-transparent" />
+                                    {seed.isCornRelated && (
+                                        <span className="absolute left-4 top-4 rounded-full bg-yellow-500/20 px-3 py-1 text-xs font-bold text-yellow-300 ring-1 ring-yellow-500/30">
+                                            Corn Focus
+                                        </span>
+                                    )}
+                                    {ownedItem && (
+                                        <span className="absolute right-4 top-4 rounded-full bg-blue-500/20 px-3 py-1 text-xs font-bold text-blue-300 ring-1 ring-blue-500/30">
+                                            {ownedItem.quantity} owned
+                                        </span>
+                                    )}
+                                </div>
+                                <div className={cn("space-y-3 border-t border-white/10 p-5", isSelected && "bg-lime-500 text-black")}>
+                                    <div className="text-center">
+                                        <div className={cn("text-xs font-bold uppercase tracking-[0.16em]", isSelected ? "text-black/55" : "text-lime-400")}>Seeds</div>
+                                        <div className="mt-2 min-h-[44px] text-lg font-bold">{seed.name.replace('Corn Seeds - ', '').replace('Bayer Corn Seed - ', '')}</div>
+                                    </div>
+                                    <div className="text-center text-3xl font-light">${seed.price.toLocaleString()}</div>
+                                </div>
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
+            <div className="grid gap-6 border-t border-white/15 px-5 py-7 lg:grid-cols-[minmax(260px,0.9fr)_1.4fr]">
+                <div>
+                    <h3 className="text-3xl font-bold uppercase tracking-wide">{selectedSeed.name}</h3>
+                    <p className="mt-4 max-w-xl text-lg leading-relaxed text-muted-foreground">
+                        {selectedSeed.description}. Seeds are used to refill sowing machines and support the corn-focused planting pass.
+                    </p>
+                </div>
+                <div className="space-y-5">
+                    <div className="grid gap-4 md:grid-cols-3">
+                        <div className="flex items-center gap-3 rounded-2xl bg-white/5 p-4">
+                            <Warehouse className="h-7 w-7 text-white/85" />
+                            <div>
+                                <div className="text-xs text-muted-foreground">Owned</div>
+                                <div className="font-semibold">{ownedSeed?.quantity || 0} {selectedSeed.unit}</div>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3 rounded-2xl bg-white/5 p-4">
+                            <KeyRound className="h-7 w-7 text-white/85" />
+                            <div>
+                                <div className="text-xs text-muted-foreground">Reserved</div>
+                                <div className="font-semibold">0 {selectedSeed.unit}</div>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3 rounded-2xl bg-white/5 p-4">
+                            <Package className="h-7 w-7 text-white/85" />
+                            <div>
+                                <div className="text-xs text-muted-foreground">Stock Capacity</div>
+                                <div className="font-semibold">{selectedStock.toLocaleString()} l</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="grid gap-4 border-y border-white/10 py-5 md:grid-cols-2">
+                        <div>
+                            <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                <Sprout className="h-4 w-4 text-lime-400" />
+                                Seed Specs
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {Object.entries(selectedSeed.specifications).map(([key, value]) => (
+                                    <span key={key} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm">
+                                        {key}: {String(value)}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                        <div>
+                            <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                <Tractor className="h-4 w-4 text-lime-400" />
+                                Compatible Operations
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {['Planters', 'Seeders', 'Corn Focus', 'Precision rows'].map((item) => (
+                                    <span key={item} className="rounded-full border border-lime-500/20 bg-lime-500/10 px-3 py-1 text-sm text-lime-200">
+                                        {item}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    );
+}
 
 export default function SuppliesMarketplacePage() {
     const { products } = useSuppliesStore();
@@ -21,6 +176,8 @@ export default function SuppliesMarketplacePage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [purchaseState, setPurchaseState] = useState<{ id: string, status: 'idle' | 'loading' | 'success' | 'error', message?: string }>({ id: '', status: 'idle' });
     const [purchaseQuantities, setPurchaseQuantities] = useState<Record<string, number>>({});
+    const seedProducts = products.filter(product => product.category === 'seeds');
+    const [selectedSeedId, setSelectedSeedId] = useState(seedProducts.find(product => product.isCornRelated)?.id || seedProducts[0]?.id || '');
 
     const filteredProducts = products.filter(product => {
         const matchesCategory = activeTab === 'all' || product.category === activeTab;
@@ -128,6 +285,15 @@ export default function SuppliesMarketplacePage() {
                 </div>
 
                 <div className="p-6 md:p-8 max-w-7xl mx-auto">
+                    {(activeTab === 'all' || activeTab === 'seeds') && (
+                        <SeedProductShowcase
+                            seedProducts={seedProducts}
+                            selectedSeedId={selectedSeedId}
+                            setSelectedSeedId={setSelectedSeedId}
+                            inventory={inventory}
+                        />
+                    )}
+
                     {/* Controls Bar */}
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 bg-white/5 border border-white/10 p-2 rounded-xl">
                         {/* Tabs */}
