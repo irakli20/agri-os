@@ -94,3 +94,4 @@ npm run dev
   - Multi-section files may include "მცენარეთა მდგომარეობა" (plant condition) and "გადარგვის შესაძლებლობა" (transplant feasibility) as standalone sections with own sub-tables -- generator handles these inline within the main body text instead.
   - Final signature table across multi-section files: consistently 6 columns [1605,1560,1155,1770,2115,1875] = 10080 twips.
   - Compact v1.9 files skip table of contents, introduction, and area description sections entirely -- everything condensed into the conclusion block after property info.
+- Raven S200-JF simulation work should model the aircraft as rotor-assisted blown-wing / near-STOL, not a pure hover drone: keep physics in `lib/raven-simulation.ts`, keep visualization/control UI thin, stop spraying in turns, fold U15 props during cruise, and surface hover-margin/pump-capacity warnings whenever parameters exceed conservative assumptions.

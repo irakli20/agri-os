@@ -36,6 +36,7 @@ export function AppShell({ children }: AppShellProps) {
         { icon: LayoutDashboard, label: 'Dashboard', href: '/' },
         { icon: MapIcon, label: 'Fields', href: '/fields' },
         { icon: Plane, label: 'Fleet', href: '/fleet' },
+        { icon: Plane, label: 'Raven Sim', href: '/raven-simulation' },
         { icon: Wrench, label: 'Equipment', href: '/equipment' },
         { icon: Package, label: 'Inventory', href: '/inventory' },
         { icon: DollarSign, label: 'Procurement', href: '/procurement' },
